@@ -1,0 +1,904 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<!-- ARTIFACT-START -->
+<title>BodyView 台灣女性身形模擬</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;700&family=Noto+Serif+TC:wght@600;900&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: fitting-room — figure stage on the left (sticky on phones), tape-measure controls and readouts on the right */
+:root {
+  --bg: #eef1f1;
+  --panel: #fbfcfc;
+  --ink: #1d2a2f;
+  --muted: #5d6d72;
+  --line: #d3dbdc;
+  --skin: #dcb59b;
+  --skin-edge: #8a5f4b;
+  --garment: #46606b;
+  --tape: #e0ab2c;
+  --tape-ink: #3a2a00;
+  --ghost: #1f8a8f;
+  --grid: #c9d3d4;
+  --c-thin: #b9d4e6;
+  --c-std: #c6e1c4;
+  --c-fit: #9fd3c7;
+  --c-hidden: #f1d79c;
+  --c-over: #f3c2a2;
+  --c-obese: #eaa3a0;
+  --c-muscle: #c9bde8;
+  --warn: #b5541c;
+  --font-display: "Noto Serif TC", "Songti TC", serif;
+  --font-body: "Noto Sans TC", "PingFang TC", "Microsoft JhengHei", system-ui, sans-serif;
+  --font-data: "IBM Plex Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #12191b; --panel: #1a2326; --ink: #e3ebec; --muted: #9aabaf; --line: #2e3b3f;
+    --skin: #c79a7f; --skin-edge: #e8c4ab; --garment: #2c3d44; --tape: #f0bd42; --tape-ink: #2a1f00;
+    --ghost: #5fd0d4; --grid: #2c393c;
+    --c-thin: #2c4a5e; --c-std: #2f4a33; --c-fit: #22504a; --c-hidden: #5a4a20; --c-over: #5e3b26; --c-obese: #5e2b2a; --c-muscle: #3f3560;
+    --warn: #f09a62; color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #12191b; --panel: #1a2326; --ink: #e3ebec; --muted: #9aabaf; --line: #2e3b3f;
+  --skin: #c79a7f; --skin-edge: #e8c4ab; --garment: #2c3d44; --tape: #f0bd42; --tape-ink: #2a1f00;
+  --ghost: #5fd0d4; --grid: #2c393c;
+  --c-thin: #2c4a5e; --c-std: #2f4a33; --c-fit: #22504a; --c-hidden: #5a4a20; --c-over: #5e3b26; --c-obese: #5e2b2a; --c-muscle: #3f3560;
+  --warn: #f09a62; color-scheme: dark;
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; }
+body {
+  background: var(--bg); color: var(--ink);
+  font-family: var(--font-body); font-size: 15px; line-height: 1.6;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+  padding-block: 20px 40px;
+}
+.wrap { max-width: 1180px; margin: 0 auto; display: grid; gap: 20px; }
+header { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 6px 20px; }
+h1 { font-family: var(--font-display); font-weight: 900; font-size: clamp(24px, 3.4vw, 34px); margin: 0; letter-spacing: .02em; text-wrap: balance; }
+h1 small { font-family: var(--font-data); font-weight: 400; font-size: .42em; color: var(--muted); letter-spacing: .08em; margin-left: .6em; }
+.lede { margin: 0; color: var(--muted); max-width: 60ch; }
+
+.main { display: grid; grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr); gap: 20px; align-items: start; }
+.stage {
+  background: var(--panel); border: 1px solid var(--line); border-radius: 14px;
+  position: sticky; top: calc(env(safe-area-inset-top, 0px) + 12px);
+  padding: 8px 8px 4px; min-width: 0;
+}
+.stage svg { display: block; width: 100%; height: auto; max-height: calc(100vh - 120px); touch-action: none; }
+.stage-bar { display: flex; flex-wrap: wrap; gap: 6px 16px; align-items: center; justify-content: space-between; padding: 4px 8px 6px; font-size: 13px; color: var(--muted); }
+.legend-ghost { display: inline-flex; align-items: center; gap: 6px; }
+.legend-ghost i { width: 22px; border-top: 2px dashed var(--ghost); display: inline-block; }
+label.toggle { display: inline-flex; align-items: center; gap: 6px; cursor: pointer; user-select: none; }
+label.toggle input { accent-color: var(--ghost); width: 16px; height: 16px; }
+
+.panel { display: grid; gap: 16px; min-width: 0; }
+.card { background: var(--panel); border: 1px solid var(--line); border-radius: 14px; padding: 16px 18px; min-width: 0; }
+.card h2 { font-size: 13px; letter-spacing: .14em; color: var(--muted); font-weight: 500; margin: 0 0 10px; }
+
+.slider { display: grid; grid-template-columns: 4.2em 1fr auto; align-items: center; gap: 4px 12px; padding: 6px 0; }
+.slider + .slider { border-top: 1px dashed var(--line); }
+.slider label { font-weight: 700; }
+.slider output { font-family: var(--font-data); font-size: 20px; font-weight: 500; font-variant-numeric: tabular-nums; min-width: 5.6ch; text-align: right; }
+.slider output span { font-size: 12px; color: var(--muted); margin-left: 2px; }
+.slider .range-row { grid-column: 1 / -1; display: grid; grid-template-columns: auto 1fr auto; gap: 8px; align-items: center; font-family: var(--font-data); font-size: 11px; color: var(--muted); }
+.slider .hint { grid-column: 2; font-size: 12px; color: var(--muted); }
+.step { appearance: none; border: 1px solid var(--line); background: var(--bg); color: var(--ink); width: 30px; height: 30px; border-radius: 8px; font-size: 16px; line-height: 1; cursor: pointer; font-family: var(--font-data); }
+.step:hover { border-color: var(--tape); }
+.step:focus-visible, input[type=range]:focus-visible, .chip:focus-visible, .pad:focus-visible { outline: 2px solid var(--ghost); outline-offset: 2px; }
+
+input[type=range] {
+  -webkit-appearance: none; appearance: none; width: 100%; height: 34px; background: transparent; cursor: grab; margin: 0;
+}
+input[type=range]:active { cursor: grabbing; }
+input[type=range]::-webkit-slider-runnable-track {
+  height: 14px; border-radius: 3px; border: 1px solid color-mix(in srgb, var(--tape) 60%, var(--ink));
+  background:
+    repeating-linear-gradient(90deg, var(--tape-ink) 0 1px, transparent 1px 10%) 0 0 / 100% 45% no-repeat,
+    repeating-linear-gradient(90deg, color-mix(in srgb, var(--tape-ink) 55%, transparent) 0 1px, transparent 1px 2%) 0 0 / 100% 28% no-repeat,
+    var(--tape);
+}
+input[type=range]::-moz-range-track {
+  height: 14px; border-radius: 3px; border: 1px solid color-mix(in srgb, var(--tape) 60%, var(--ink));
+  background:
+    repeating-linear-gradient(90deg, var(--tape-ink) 0 1px, transparent 1px 10%) 0 0 / 100% 45% no-repeat,
+    repeating-linear-gradient(90deg, color-mix(in srgb, var(--tape-ink) 55%, transparent) 0 1px, transparent 1px 2%) 0 0 / 100% 28% no-repeat,
+    var(--tape);
+}
+input[type=range]::-webkit-slider-thumb {
+  -webkit-appearance: none; width: 14px; height: 30px; margin-top: -9px; border-radius: 4px;
+  background: var(--ink); border: 2px solid var(--panel); box-shadow: 0 1px 4px rgba(0,0,0,.35);
+}
+input[type=range]::-moz-range-thumb { width: 12px; height: 28px; border-radius: 4px; background: var(--ink); border: 2px solid var(--panel); box-shadow: 0 1px 4px rgba(0,0,0,.35); }
+
+.chips { display: flex; flex-wrap: wrap; gap: 8px; }
+.chip { appearance: none; font: inherit; font-size: 13px; padding: 5px 12px; border-radius: 999px; border: 1px solid var(--line); background: var(--bg); color: var(--ink); cursor: pointer; }
+.chip:hover { border-color: var(--tape); }
+.chip b { font-family: var(--font-data); font-weight: 400; color: var(--muted); font-size: 11px; margin-left: 4px; }
+
+.verdict { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; }
+.pill { display: inline-block; padding: 3px 12px; border-radius: 999px; font-weight: 700; font-size: 15px; color: var(--ink); border: 1px solid color-mix(in srgb, var(--ink) 18%, transparent); }
+.verdict p { margin: 0; color: var(--muted); font-size: 13px; flex-basis: 100%; }
+.warn { color: var(--warn); font-size: 13px; margin: 8px 0 0; }
+
+.stats { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px 14px; margin: 0; }
+.stats div { display: grid; gap: 0; min-width: 0; }
+.stats dt { font-size: 12px; color: var(--muted); }
+.stats dd { margin: 0; font-family: var(--font-data); font-size: 18px; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.stats dd small { font-size: 11px; color: var(--muted); margin-left: 2px; }
+.stats dd .flag { font-family: var(--font-body); font-size: 11px; padding: 0 6px; border-radius: 6px; margin-left: 4px; vertical-align: 2px; }
+.stats-sub { font-size: 12px; color: var(--muted); margin: 10px 0 0; }
+
+.pad-wrap { display: grid; gap: 8px; }
+.pad { width: 100%; height: auto; display: block; touch-action: none; cursor: crosshair; border-radius: 8px; }
+.pad text { font-family: var(--font-data); }
+.cat-legend { display: flex; flex-wrap: wrap; gap: 4px 12px; font-size: 12px; color: var(--muted); margin: 0; padding: 0; list-style: none; }
+.cat-legend li { display: inline-flex; align-items: center; gap: 5px; }
+.cat-legend i { width: 12px; height: 12px; border-radius: 3px; display: inline-block; border: 1px solid color-mix(in srgb, var(--ink) 15%, transparent); }
+.cat-legend li.on { color: var(--ink); font-weight: 700; }
+
+.notes { font-size: 12.5px; color: var(--muted); max-width: 80ch; }
+.notes h2 { font-size: 13px; letter-spacing: .14em; font-weight: 500; margin: 0 0 4px; }
+.notes ul { margin: 0; padding-left: 1.2em; }
+
+svg text { font-family: var(--font-body); }
+svg .mono { font-family: var(--font-data); }
+
+@media (max-width: 820px) {
+  .main { grid-template-columns: minmax(0, 1fr); }
+  .stage { z-index: 5; padding: 4px; box-shadow: 0 6px 18px rgba(0,0,0,.08); }
+  .stage svg { max-height: 46vh; }
+  .stats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+</style>
+<!-- ARTIFACT-HEAD-END -->
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>BodyView<small>TAIWAN · FEMALE · 150–175 cm</small></h1>
+    <p class="lede">拖動身高、體重、體脂率，看同一位台灣女性在不同組合下的正面與側面身形，以及胸、腰、臀的估算圍度。虛線是台灣成年女性平均（159 cm／56 kg／30%）的對照輪廓。</p>
+  </header>
+
+  <div class="main">
+    <section class="stage" aria-label="身形預覽">
+      <svg id="fig" viewBox="-64 -8 202 194" role="img" aria-label="正面與側面身形輪廓"></svg>
+      <div class="stage-bar">
+        <label class="toggle"><input type="checkbox" id="ghostToggle" checked> 顯示平均輪廓 <span class="legend-ghost"><i></i></span></label>
+        <label class="toggle"><input type="checkbox" id="tapeToggle" checked> 顯示圍度皮尺</label>
+        <span>在圖上拖曳：上下改身高、左右改體重</span>
+      </div>
+    </section>
+
+    <div class="panel">
+      <section class="card" aria-labelledby="h-ctrl">
+        <h2 id="h-ctrl">調整數值</h2>
+        <div class="slider">
+          <label for="h">身高</label>
+          <span></span>
+          <output id="hOut" for="h">159.0<span>cm</span></output>
+          <div class="range-row"><button class="step" data-for="h" data-d="-0.5" aria-label="身高減 0.5">−</button><input type="range" id="h" min="150" max="175" step="0.5" value="159"><button class="step" data-for="h" data-d="0.5" aria-label="身高加 0.5">+</button></div>
+        </div>
+        <div class="slider">
+          <label for="w">體重</label>
+          <span></span>
+          <output id="wOut" for="w">56.0<span>kg</span></output>
+          <div class="range-row"><button class="step" data-for="w" data-d="-0.5" aria-label="體重減 0.5">−</button><input type="range" id="w" min="40" max="80" step="0.5" value="56"><button class="step" data-for="w" data-d="0.5" aria-label="體重加 0.5">+</button></div>
+        </div>
+        <div class="slider">
+          <label for="bf">體脂率</label>
+          <span></span>
+          <output id="bfOut" for="bf">30.0<span>%</span></output>
+          <div class="range-row"><button class="step" data-for="bf" data-d="-0.5" aria-label="體脂率減 0.5">−</button><input type="range" id="bf" min="15" max="40" step="0.5" value="30"><button class="step" data-for="bf" data-d="0.5" aria-label="體脂率加 0.5">+</button></div>
+        </div>
+        <div class="chips" style="margin-top:10px" aria-label="範例組合">
+          <button class="chip" data-p="159,56,30">台灣平均<b>159/56/30</b></button>
+          <button class="chip" data-p="162,48,33">泡芙人<b>162/48/33</b></button>
+          <button class="chip" data-p="165,58,20">運動員<b>165/58/20</b></button>
+          <button class="chip" data-p="155,45,24">嬌小纖瘦<b>155/45/24</b></button>
+          <button class="chip" data-p="160,70,38">豐腴<b>160/70/38</b></button>
+        </div>
+      </section>
+
+      <section class="card" aria-labelledby="h-pad">
+        <h2 id="h-pad">體重 × 體脂 平面（可直接拖曳）</h2>
+        <div class="pad-wrap">
+          <svg id="pad" class="pad" viewBox="0 0 320 210" tabindex="0" aria-label="拖曳選擇體重與體脂率"></svg>
+          <ul class="cat-legend" id="catLegend"></ul>
+        </div>
+      </section>
+
+      <section class="card" aria-labelledby="h-res">
+        <h2 id="h-res">估算結果</h2>
+        <div class="verdict"><span class="pill" id="catPill">標準</span><p id="catDesc"></p></div>
+        <dl class="stats" id="stats" style="margin-top:14px"></dl>
+        <p class="warn" id="warn" hidden></p>
+        <p class="stats-sub">圍度為模型估算值，同樣數字的真人會因骨架、年齡、脂肪分布而有數公分差異。</p>
+      </section>
+    </div>
+  </div>
+
+  <section class="notes">
+    <h2>模型怎麼算</h2>
+    <ul>
+      <li>體重拆成脂肪重（體重 × 體脂率）與去脂體重。每個部位的截面積 = 去脂成分 + 脂肪成分，兩者各自按「質量 ÷ 身高」縮放；脂肪在腰腹的累積隨總脂肪量非線性增加，大腿與臀部則接近線性，呈現女性常見的梨形分布。</li>
+      <li>基準圍度取台灣成年女性約 159 cm、56 kg、體脂 30% 的典型值（下胸圍 71、腰圍 70、臀圍 92 cm），身體比例依女性人體計測常見比例設定。</li>
+      <li>分類參考國健署：BMI 18.5–24 為健康體位、24–27 過重、≥27 肥胖；成年女性體脂率 ≥30% 屬肥胖，腰圍 ≥80 cm 為腹部肥胖。「泡芙人」指 BMI 正常但體脂偏高。</li>
+      <li>去脂體重指數（FFMI）超過約 21 在女性中相當罕見，低於約 12 代表肌肉量極少，這些組合會以提示標出。</li>
+    </ul>
+  </section>
+</div>
+
+<script>
+(() => {
+  "use strict";
+  const $ = (id) => document.getElementById(id);
+  const NS = "http://www.w3.org/2000/svg";
+  const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
+  const lerp = (a, b, t) => a + (b - a) * t;
+  const f1 = (v) => v.toFixed(1);
+
+  /* ---------------- Body model ---------------- */
+  const REF = { H: 159, W: 56, BF: 30 };
+  const REF_F = REF.W * REF.BF / 100, REF_L = REF.W - REF_F;
+  const FH0 = REF_F / (REF.H / 100), LH0 = REF_L / (REF.H / 100);
+
+  // reference girth (cm), fat share of cross-section at reference, fat exponent
+  const REG = {
+    neck:      [31.5, 0.20, 1.0],
+    underbust: [71.0, 0.35, 1.1],
+    waist:     [70.0, 0.42, 1.38],
+    belly:     [83.0, 0.50, 1.28],
+    hip:       [92.0, 0.50, 0.95],
+    thigh:     [53.0, 0.52, 0.95],
+    midthigh:  [46.0, 0.48, 0.95],
+    aboveKnee: [38.0, 0.45, 0.95],
+    knee:      [34.5, 0.35, 1.0],
+    calf:      [33.5, 0.38, 0.95],
+    lowerCalf: [25.5, 0.30, 0.95],
+    ankle:     [20.5, 0.12, 1.0],
+    upperArm:  [26.0, 0.50, 1.05],
+    elbow:     [22.0, 0.35, 1.0],
+    forearm:   [22.0, 0.32, 1.0],
+    wrist:     [14.5, 0.12, 1.0],
+  };
+
+  function computeBody(H, W, BF) {
+    const bf = BF / 100, F = W * bf, L = W - F, Hm = H / 100;
+    const fr = (F / Hm) / FH0, lr = (L / Hm) / LH0;
+    const bmi = W / (Hm * Hm);
+    const g = {};
+    for (const k in REG) {
+      const [g0, p, e] = REG[k];
+      g[k] = g0 * Math.sqrt(p * Math.pow(fr, e) + (1 - p) * lr);
+    }
+    const bustDiff = clamp(12.5 * Math.pow(fr, 0.62) * Math.pow(lr, 0.15), 5, 28);
+    g.bust = g.underbust + bustDiff;
+
+    // width:depth ratios (front width vs side depth)
+    const fatShift = bf - 0.30;
+    const R = {
+      neck: 1.05, underbust: 1.30,
+      waist: clamp(1.42 - 1.1 * fatShift - 0.018 * (bmi - 21.5), 1.05, 1.6),
+      belly: clamp(1.32 - 1.0 * fatShift - 0.016 * (bmi - 21.5), 1.0, 1.5),
+      hip: 1.38, thigh: 1.05, midthigh: 1.0, aboveKnee: 1.02, knee: 1.05, calf: 0.98, lowerCalf: 1.0, ankle: 1.1,
+      upperArm: 1.0, elbow: 1.0, forearm: 1.1, wrist: 1.35,
+    };
+    const WD = {};
+    for (const k in R) {
+      const r = R[k];
+      const D = g[k] / (Math.PI * Math.sqrt((r * r + 1) / 2));
+      WD[k] = { w: r * D, d: D };
+    }
+    const s = H / REF.H;
+    const headS = Math.pow(s, 0.4);
+    const bia = 35.5 * s * (0.9 + 0.1 * Math.sqrt(lr)); // biacromial breadth
+    return { H, W, BF, bf, F, L, fr, lr, bmi, g, WD, bustDiff, s, headS, bia,
+             ffmi: L / (Hm * Hm), fmi: F / (Hm * Hm) };
+  }
+
+  /* ---------------- Geometry helpers ---------------- */
+  function crPath(pts) {
+    const n = pts.length;
+    let d = `M${pts[0][0].toFixed(2)},${pts[0][1].toFixed(2)}`;
+    for (let i = 0; i < n; i++) {
+      const p0 = pts[(i - 1 + n) % n], p1 = pts[i], p2 = pts[(i + 1) % n], p3 = pts[(i + 2) % n];
+      const c1 = [p1[0] + (p2[0] - p0[0]) / 6, p1[1] + (p2[1] - p0[1]) / 6];
+      const c2 = [p2[0] - (p3[0] - p1[0]) / 6, p2[1] - (p3[1] - p1[1]) / 6];
+      d += `C${c1[0].toFixed(2)},${c1[1].toFixed(2)} ${c2[0].toFixed(2)},${c2[1].toFixed(2)} ${p2[0].toFixed(2)},${p2[1].toFixed(2)}`;
+    }
+    return d + "Z";
+  }
+  const mirror = (pts) => pts.map(([x, y]) => [-x, y]);
+  const shift = (pts, dx, dy) => pts.map(([x, y]) => [x + dx, y + dy]);
+  function symLoop(right) { // right: top→bottom, last point on centreline
+    const last = right[right.length - 1];
+    const body = right.slice(0, -1);
+    const back = mirror(body).reverse();
+    if (body[0][0] === 0) back.pop();
+    return [...body, last, ...back];
+  }
+  // arm built along a bent axis; stations: [t, halfWidth]
+  function armLoop(start, ang1, ang2, Lu, stations) {
+    const d1 = [Math.sin(ang1), Math.cos(ang1)], d2 = [Math.sin(ang2), Math.cos(ang2)];
+    const elbow = [start[0] + d1[0] * Lu, start[1] + d1[1] * Lu];
+    const at = (t) => {
+      if (t <= Lu) return { p: [start[0] + d1[0] * t, start[1] + d1[1] * t], dir: t > Lu - 2 ? [(d1[0] + d2[0]) / 2, (d1[1] + d2[1]) / 2] : d1 };
+      const u = t - Lu;
+      return { p: [elbow[0] + d2[0] * u, elbow[1] + d2[1] * u], dir: d2 };
+    };
+    const outer = [], inner = [];
+    for (const [t, hw, bias = 0] of stations) {
+      const { p, dir } = at(t);
+      const nx = dir[1], ny = -dir[0]; // normal pointing to +x side when dir is downward
+      outer.push([p[0] + nx * hw * (1 + bias), p[1] + ny * hw * (1 + bias)]);
+      inner.push([p[0] - nx * hw * (1 - bias), p[1] - ny * hw * (1 - bias)]);
+    }
+    const capT = at(stations[0][0] - 3).p;
+    const tip = at(stations[stations.length - 1][0] + 1.2).p;
+    return { pts: [capT, ...outer, tip, ...inner.reverse()], inner, outer, at };
+  }
+
+  /* ---------------- Figure geometry ---------------- */
+  function geometry(b) {
+    const { H, WD, g, s, headS } = b;
+    const top = 180 - H;
+    const Y = (f) => top + f * H;
+    const headH = 22 * headS, headW = 15.2 * headS * (1 + 0.06 * clamp(b.fr - 1, -0.6, 1.5));
+    const chin = top + headH;
+    const y = {
+      chin, neckBase: Y(0.168), shoulder: Y(0.186), armpit: Y(0.243), bust: Y(0.282), underbust: Y(0.322),
+      waist: Y(0.385), belly: Y(0.437), hip: Y(0.497), crotch: Y(0.535), midthigh: Y(0.62), aboveKnee: Y(0.688),
+      knee: Y(0.726), belowKnee: Y(0.758), calf: Y(0.80), lowerCalf: Y(0.875), ankle: Y(0.955), floor: 180,
+    };
+    const hw = (k) => WD[k].w / 2;
+    const hd = (k) => WD[k].d;
+    const bustHalf = hw("underbust") + 0.1 * b.bustDiff;
+    const shoulderHalf = b.bia / 2;
+
+    /* ---- FRONT ---- */
+    const F = {};
+    const s1 = headW / 15.2, s2 = headH / 22;
+    const headR = [[0, 0], [5.4, 0.9], [7.4, 5.2], [7.6, 10.6], [6.6, 15.4], [4.4, 19.6], [0, 22]];
+    F.head = crPath(shift(symLoop(headR.map(([x, yy]) => [x * s1, yy * s2])), 0, top));
+    const hairR = [[0, -0.9], [5.9, 0.2], [8.2, 5.2], [8.3, 11.8], [7.4, 13.6], [6.9, 8.2], [5.2, 4.4], [0, 3.6]];
+    F.hair = crPath(shift(symLoop(hairR.map(([x, yy]) => [x * s1, yy * s2])), 0, top));
+    const neckHalf = hw("neck");
+    const torsoR = [
+      [neckHalf * 0.95, chin - 3],
+      [neckHalf, y.neckBase - 1.5],
+      [neckHalf + (shoulderHalf - neckHalf) * 0.45, y.shoulder - 1.6],
+      [shoulderHalf, y.shoulder + 1.2],
+      [Math.max(hw("underbust") * 1.03, shoulderHalf - 2.2), y.armpit],
+      [bustHalf, y.bust],
+      [hw("underbust"), y.underbust],
+      [hw("waist"), y.waist],
+      [hw("belly"), y.belly],
+      [hw("hip"), y.hip],
+      [hw("hip") * 0.95, y.crotch],
+      [0, y.crotch + 1],
+    ];
+    F.torsoPts = symLoop(torsoR);
+    F.torso = crPath(F.torsoPts);
+
+    // legs
+    const ankleC = 0.042 * H, kneeH = hw("knee");
+    const thighH = hw("thigh");
+    const legC0 = Math.max(hw("hip") * 0.985 - thighH, thighH * 0.8, 0.03 * H);
+    const legCk = Math.max(kneeH + 0.3, legC0 * 0.45 + ankleC * 0.55);
+    const legCm = lerp(legC0, legCk, 0.42), legCak = lerp(legC0, legCk, 0.82);
+    const legCbk = lerp(legCk, ankleC, 0.12);
+    const legCc = Math.max(hw("calf") + 0.25, lerp(legCk, ankleC, 0.3));
+    const legCl = lerp(legCc, ankleC, 0.6);
+    const ankH = hw("ankle");
+    const footL = 0.152 * H;
+    const legR = [
+      [0.5, y.belly],
+      [hw("hip") * 0.97, y.hip],
+      [legC0 + thighH, y.crotch + 2.5],
+      [legCm + hw("midthigh"), y.midthigh],
+      [legCak + hw("aboveKnee"), y.aboveKnee],
+      [legCk + kneeH * 0.98, y.knee],
+      [legCbk + hw("calf") * 0.9, y.belowKnee],
+      [legCc + hw("calf") * 1.02, y.calf],
+      [legCl + hw("lowerCalf"), y.lowerCalf],
+      [ankleC + ankH, y.ankle],
+      [ankleC + ankH + 1.6, y.floor - 2.4],
+      [ankleC + ankH + 2.6, y.floor - 0.4],
+      [ankleC + ankH + 1.2, y.floor],
+      [ankleC - ankH - 0.6, y.floor],
+      [ankleC - ankH - 0.8, y.floor - 1.2],
+      [ankleC - ankH * 0.95, y.ankle],
+      [legCl - hw("lowerCalf") * 0.95, y.lowerCalf],
+      [legCc - hw("calf") * 0.98, y.calf - 2],
+      [legCbk - hw("calf") * 0.85, y.belowKnee],
+      [legCk - kneeH, y.knee],
+      [legCak - hw("aboveKnee"), y.aboveKnee],
+      [legCm - hw("midthigh"), y.midthigh],
+      [legC0 - thighH * 0.97, y.crotch + 2.5],
+      [Math.min(0, legC0 - thighH) - 0.2, y.crotch - 0.5],
+      [0, y.crotch - 3],
+    ];
+    F.legRPts = legR;
+    F.legR = crPath(legR);
+    F.legL = crPath(mirror(legR));
+
+    // body half-width profile (for arm clearance)
+    const prof = [
+      [y.armpit, torsoR[4][0]], [y.bust, bustHalf], [y.underbust, hw("underbust")], [y.waist, hw("waist")],
+      [y.belly, hw("belly")], [y.hip, hw("hip")], [y.crotch + 2.5, legC0 + thighH], [y.midthigh, legCm + hw("midthigh")],
+      [y.aboveKnee, legCak + hw("aboveKnee")],
+    ];
+    const bodyHalfAt = (yy) => {
+      if (yy <= prof[0][0]) return prof[0][1];
+      for (let i = 1; i < prof.length; i++) if (yy <= prof[i][0]) {
+        const t = (yy - prof[i - 1][0]) / (prof[i][0] - prof[i - 1][0]);
+        return lerp(prof[i - 1][1], prof[i][1], t);
+      }
+      return prof[prof.length - 1][1];
+    };
+
+    // arms
+    const Lu = 0.186 * H, Lf = 0.146 * H, Lh = 0.108 * H;
+    const uaH = hw("upperArm"), delt = uaH * 1.12;
+    const start = [shoulderHalf - uaH * 0.35, y.shoulder + 2.6];
+    const frontHandH = hw("wrist") * 1.25;
+    const stations = [
+      [0, delt], [0.22 * Lu, delt * 0.98], [0.55 * Lu, uaH], [0.85 * Lu, uaH * 0.88], [Lu, hw("elbow")],
+      [Lu + 0.3 * Lf, hw("forearm")], [Lu + 0.75 * Lf, hw("forearm") * 0.8], [Lu + Lf, hw("wrist")],
+      [Lu + Lf + 0.35 * Lh, frontHandH], [Lu + Lf + 0.75 * Lh, frontHandH * 0.85], [Lu + Lf + Lh, 1.0],
+    ];
+    let ang = 6 * Math.PI / 180, arm;
+    for (let i = 0; i < 60; i++) {
+      arm = armLoop(start, ang, ang + 5 * Math.PI / 180, Lu, stations);
+      // check inner points below armpit
+      let ok = true;
+      arm.inner.forEach(([x, yy], idx) => { if (idx >= 3 && yy > y.armpit + 3 && x < bodyHalfAt(yy) + 1.2) ok = false; });
+      if (ok) break;
+      ang += 0.6 * Math.PI / 180;
+    }
+    F.armR = crPath(arm.pts);
+    F.armL = crPath(mirror(arm.pts));
+    F.armAngle = ang;
+
+    // details
+    F.navel = { x: 0, y: y.belly - 2.2 };
+    F.bustHalf = bustHalf;
+    F.clav = [[neckHalf * 0.6, y.neckBase + 1.4], [shoulderHalf * 0.85, y.shoulder + 0.4]];
+
+    /* ---- SIDE ---- (x forward) */
+    const S = {};
+    const sd = headS;
+    const headSide = [[0.5, 0], [5.8, 1.2], [8.4, 5], [9.2, 9.3], [10.6, 12.6], [9.4, 14.6], [9.3, 16], [8.4, 19.4], [6.2, 21.2], [3.4, 21.6],
+      [-1, 21.5], [-6.4, 19.8], [-8.6, 15], [-9.4, 9], [-7.4, 2.8]].map(([x, yy]) => [x * sd + 0.8, yy * s2 + top]);
+    S.head = crPath(headSide);
+    const hairSide = [[8.1, 4.6], [6.2, 0.4], [0.4, -0.9], [-6.6, 1.2], [-10.2, 7.8], [-9.6, 14.6], [-7.6, 17.8], [-4.8, 14.6], [-2.6, 10.2], [1.8, 6.4], [5.5, 5.4]]
+      .map(([x, yy]) => [x * sd + 0.8, yy * s2 + top]);
+    S.hair = crPath(hairSide);
+    S.bun = { cx: -9.6 * sd + 0.8, cy: 5.6 * s2 + top, r: 3.8 * sd };
+
+    const ubD = hd("underbust"), proj = 0.44 * b.bustDiff;
+    const cub = -0.5, ubF = cub + ubD * 0.5, ubB = cub - ubD * 0.5;
+    const nD = hd("neck");
+    const wD = hd("waist"), cw = 1.0, kw = 0.55;
+    const beD = hd("belly"), cbe = 0.6, kbe = clamp(0.56 + 0.08 * (b.fr - 1), 0.5, 0.68);
+    const hD = hd("hip"), ch = -1.0, kh = 0.45;
+    const tD = hd("thigh");
+    const frontS = [
+      [2.6 * sd + 0.8, chin - 0.6],
+      [-2 + nD * 0.5, y.neckBase - 0.5],
+      [ubF - 1.2, y.shoulder + 0.5],
+      [ubF + proj * 0.28, y.armpit + 0.8],
+      [ubF + proj, y.bust + 1.2],
+      [ubF + proj * 0.62, (y.bust + y.underbust) / 2 + 2.2],
+      [ubF, y.underbust + 0.8],
+      [cw + wD * kw, y.waist],
+      [cbe + beD * kbe, y.belly + 0.5],
+      [ch + hD * kh + 0.6, y.hip],
+      [0.4 + tD * 0.5, y.crotch],
+    ];
+    const backS = [
+      [-6.2 * sd + 0.8, chin - 3],
+      [-2 - nD * 0.5, y.neckBase - 1.0],
+      [ubB - 0.6, y.shoulder + 3],
+      [ubB - 0.8, y.armpit],
+      [ubB - 0.3, y.bust],
+      [ubB + 0.6, y.underbust],
+      [cw - wD * (1 - kw), y.waist],
+      [cbe - beD * (1 - kbe) - 0.5, y.belly],
+      [ch - hD * (1 - kh), y.hip],
+      [ch - hD * (1 - kh) * 0.86, y.crotch + 0.4],
+    ];
+    S.torsoPts = [...frontS, [lerp(frontS[frontS.length - 1][0], backS[backS.length - 1][0], 0.5), y.crotch + 1.6], ...backS.reverse()];
+    S.torso = crPath(S.torsoPts);
+
+    const sideLeg = (k, c, kk) => [c + hd(k) * kk, c - hd(k) * (1 - kk)];
+    const [thF, thB] = sideLeg("thigh", 0.4, 0.5);
+    const [mtF, mtB] = sideLeg("midthigh", 1.0, 0.55);
+    const [akF, akB] = sideLeg("aboveKnee", 1.0, 0.52);
+    const [knF, knB] = sideLeg("knee", 0.6, 0.55);
+    const [bkF, bkB] = sideLeg("calf", -0.6, 0.42);
+    const [caF, caB] = sideLeg("calf", -1.4, 0.4);
+    const [lcF, lcB] = sideLeg("lowerCalf", -1.0, 0.45);
+    const [anF, anB] = sideLeg("ankle", -0.6, 0.55);
+    const heel = anB - 1.4, toe = heel + footL;
+    const legS = [
+      [ch + hD * kh - 1.5, y.belly + 2],
+      [thF, y.crotch + 2],
+      [mtF, y.midthigh],
+      [akF, y.aboveKnee],
+      [knF, y.knee],
+      [bkF - 0.2, y.belowKnee + 1],
+      [caF + 0.4, y.calf],
+      [lcF, y.lowerCalf],
+      [anF, y.ankle],
+      [anF + footL * 0.3, y.floor - 4.2],
+      [toe - 1.6, y.floor - 1.8],
+      [toe, y.floor - 0.6],
+      [toe - 1.2, y.floor],
+      [heel + 1.4, y.floor],
+      [heel, y.floor - 1.6],
+      [anB - 0.4, y.ankle - 1.5],
+      [lcB, y.lowerCalf],
+      [caB, y.calf - 1.5],
+      [bkB, y.belowKnee],
+      [knB, y.knee],
+      [akB, y.aboveKnee],
+      [mtB, y.midthigh],
+      [thB, y.crotch + 3],
+      [ch - hD * (1 - kh) * 0.8, y.hip + 1],
+    ];
+    S.leg = crPath(legS);
+
+    // side arm: hanging slightly behind centre
+    const sStart = [ubB + ubD * 0.42, y.shoulder + 3];
+    const sideHandH = 3.9 * s;
+    const sStations = [
+      [0, hd("upperArm") * 0.62], [0.22 * Lu, hd("upperArm") * 0.58], [0.55 * Lu, hd("upperArm") * 0.5], [Lu, hd("elbow") * 0.5],
+      [Lu + 0.3 * Lf, hd("forearm") * 0.52], [Lu + Lf, hd("wrist") * 0.62],
+      [Lu + Lf + 0.4 * Lh, sideHandH], [Lu + Lf + 0.8 * Lh, sideHandH * 0.8], [Lu + Lf + Lh, 1.2],
+    ];
+    const sArm = armLoop(sStart, 2 * Math.PI / 180, -8 * Math.PI / 180, Lu, sStations);
+    S.arm = crPath(sArm.pts);
+
+    S.tape = {
+      bust: [ubB - 0.3, ubF + proj, y.bust + 1.2],
+      waist: [cw - wD * (1 - kw), cw + wD * kw, y.waist],
+      hip: [ch - hD * (1 - kh), ch + hD * kh + 0.6, y.hip],
+    };
+    S.ub = { F: ubF, B: ubB, proj };
+
+    F.tape = {
+      bust: [bustHalf, y.bust], waist: [hw("waist"), y.waist], hip: [hw("hip"), y.hip],
+    };
+    return { F, S, y, top, H, shoulderHalf, legC0, thighH };
+  }
+
+  /* ---------------- Rendering ---------------- */
+  const SIDE_X = 102;
+  const svg = $("fig");
+  const el = (name, attrs = {}, parent) => {
+    const e = document.createElementNS(NS, name);
+    for (const k in attrs) e.setAttribute(k, attrs[k]);
+    if (parent) parent.appendChild(e);
+    return e;
+  };
+
+  function buildStatic() {
+    svg.innerHTML = "";
+    const defs = el("defs", {}, svg);
+    el("clipPath", { id: "clipFront" }, defs);
+    el("clipPath", { id: "clipSide" }, defs);
+    // ruler
+    const ruler = el("g", { id: "ruler" }, svg);
+    for (let h = 0; h <= 180; h += 5) {
+      const yy = 180 - h, major = h % 10 === 0;
+      if (major && h >= 140) el("line", { x1: -50, x2: 132, y1: yy, y2: yy, stroke: "var(--grid)", "stroke-width": h % 50 === 0 ? 0.35 : 0.2, "stroke-dasharray": "1 1.4" }, ruler);
+      el("line", { x1: -56, x2: major ? -50 : -53, y1: yy, y2: yy, stroke: "var(--muted)", "stroke-width": 0.3 }, ruler);
+      if (major) { const t = el("text", { x: -57.5, y: yy + 1.2, "text-anchor": "end", "font-size": 3.4, fill: "var(--muted)", class: "mono" }, ruler); t.textContent = h; }
+    }
+    el("line", { x1: -50, x2: -50, y1: 0, y2: 180, stroke: "var(--muted)", "stroke-width": 0.3 }, ruler);
+    el("line", { x1: -56, x2: 134, y1: 180, y2: 180, stroke: "var(--muted)", "stroke-width": 0.5 }, ruler);
+    const cm = el("text", { x: -57.5, y: -3, "text-anchor": "end", "font-size": 3, fill: "var(--muted)", class: "mono" }, ruler); cm.textContent = "cm";
+
+    el("line", { id: "headLine", x1: -50, x2: 132, stroke: "var(--tape)", "stroke-width": 0.5 }, svg);
+    const hl = el("text", { id: "headLabel", x: -48.5, "font-size": 3.6, fill: "var(--ink)", class: "mono", "font-weight": 500 }, svg);
+    hl.textContent = "";
+
+    el("g", { id: "front" }, svg);
+    el("g", { id: "side", transform: `translate(${SIDE_X},0)` }, svg);
+    el("g", { id: "ghost", fill: "none", stroke: "var(--ghost)", "stroke-width": 0.45, "stroke-dasharray": "1.6 1.1", "stroke-linejoin": "round" }, svg);
+    el("g", { id: "tapes" }, svg);
+    const lf = el("text", { x: 0, y: 186, "text-anchor": "middle", "font-size": 3.8, fill: "var(--muted)" }, svg); lf.textContent = "正面";
+    const ls = el("text", { x: SIDE_X, y: 186, "text-anchor": "middle", "font-size": 3.8, fill: "var(--muted)" }, svg); ls.textContent = "側面";
+  }
+
+  function bodyGroup(parent, parts, edgeW) {
+    // stroke underlay then fill → seamless union outline
+    const under = el("g", { fill: "var(--skin)", stroke: "var(--skin-edge)", "stroke-width": edgeW, "stroke-linejoin": "round" }, parent);
+    const over = el("g", { fill: "var(--skin)" }, parent);
+    parts.forEach((d) => { el("path", { d }, under); el("path", { d }, over); });
+  }
+
+  function renderFront(G, b) {
+    const g = $("front"); g.innerHTML = "";
+    const { F, y } = G;
+    const clip = $("clipFront"); clip.innerHTML = "";
+    [F.torso, F.legR, F.legL].forEach((d) => el("path", { d }, clip));
+    el("path", { d: F.hair, fill: "var(--garment)", transform: "translate(0,-0.2)" }, g);
+    bodyGroup(g, [F.head, F.armR, F.armL, F.legR, F.legL, F.torso], 0.7);
+    el("path", { d: F.hair, fill: "var(--garment)", opacity: 0.96 }, g);
+
+    const wear = el("g", { "clip-path": "url(#clipFront)", fill: "var(--garment)" }, g);
+    // bra
+    const bh = F.bustHalf, cupR = bh * 0.5;
+    const cupTop = y.armpit + (y.bust - y.armpit) * 0.25;
+    el("path", { d: `M${-bh * 1.3},${y.underbust + 2.2} L${-bh * 1.3},${y.bust + 0.8} Q${-bh * 0.9},${cupTop - 0.5} ${-bh * 0.42},${cupTop} Q${-0.6},${cupTop + 2} 0,${y.bust + 1} Q${0.6},${cupTop + 2} ${bh * 0.42},${cupTop} Q${bh * 0.9},${cupTop - 0.5} ${bh * 1.3},${y.bust + 0.8} L${bh * 1.3},${y.underbust + 2.2} Z` }, wear);
+    // straps
+    [-1, 1].forEach((sgn) => el("line", { x1: sgn * bh * 0.5, y1: cupTop + 0.3, x2: sgn * G.shoulderHalf * 0.68, y2: y.shoulder - 0.6, stroke: "var(--garment)", "stroke-width": 0.9 }, wear));
+    // briefs
+    const bt = y.belly + 2.2, W = 40;
+    el("path", { d: `M${-W},${bt} L${W},${bt} L${W},${y.hip - 1} Q${G.legC0},${y.hip + 1} 3.2,${y.crotch + 3} L-3.2,${y.crotch + 3} Q${-G.legC0},${y.hip + 1} ${-W},${y.hip - 1} Z` }, wear);
+    // wear outline seams
+    const det = el("g", { fill: "none", stroke: "var(--skin-edge)", "stroke-width": 0.3, "stroke-linecap": "round", opacity: 0.7 }, g);
+    F.clav && [-1, 1].forEach((sgn) => el("path", { d: `M${sgn * F.clav[0][0]},${F.clav[0][1]} Q${sgn * (F.clav[0][0] + F.clav[1][0]) / 2},${F.clav[0][1] + 1.2} ${sgn * F.clav[1][0]},${F.clav[1][1]}` }, det));
+    el("ellipse", { cx: 0, cy: F.navel.y, rx: 0.45, ry: 0.8, fill: "var(--skin-edge)", stroke: "none", opacity: 0.6 }, g);
+    if (b.BF < 22) {
+      const a = clamp((22 - b.BF) / 7, 0, 1) * 0.45;
+      el("path", { d: `M0,${y.underbust + 3} L0,${F.navel.y - 2.5}`, stroke: "var(--skin-edge)", "stroke-width": 0.3, opacity: a, fill: "none" }, g);
+      [y.underbust + 6, y.waist + 2].forEach((yy) => el("path", { d: `M-4,${yy} Q0,${yy + 0.8} 4,${yy}`, stroke: "var(--skin-edge)", "stroke-width": 0.25, opacity: a * 0.8, fill: "none" }, g));
+    }
+    // knees
+    const kx = G.F.legRPts[5][0] - (G.F.legRPts[5][0] - G.F.legRPts[19][0]) / 2;
+    [-1, 1].forEach((sgn) => el("path", { d: `M${sgn * (kx - 2)},${y.knee + 1} Q${sgn * kx},${y.knee + 2.2} ${sgn * (kx + 2)},${y.knee + 1}`, stroke: "var(--skin-edge)", "stroke-width": 0.25, fill: "none", opacity: 0.5 }, g));
+  }
+
+  function renderSide(G, b) {
+    const g = $("side"); g.innerHTML = "";
+    const { S, y } = G;
+    const clip = $("clipSide"); clip.innerHTML = "";
+    [S.torso, S.leg].forEach((d) => el("path", { d }, clip));
+    el("circle", { cx: S.bun.cx, cy: S.bun.cy, r: S.bun.r, fill: "var(--garment)" }, g);
+    bodyGroup(g, [S.head, S.leg, S.torso], 0.7);
+    el("path", { d: S.hair, fill: "var(--garment)" }, g);
+    const wear = el("g", { "clip-path": "url(#clipSide)", fill: "var(--garment)" }, g);
+    const cupTop = y.armpit + (y.bust - y.armpit) * 0.3;
+    el("path", { d: `M-30,${y.bust - 3} L${S.ub.F - 1},${cupTop} Q${S.ub.F + S.ub.proj * 0.6},${cupTop - 0.6} 40,${y.bust - 2} L40,${y.underbust + 2.4} L-30,${y.underbust + 2.4} Z` }, wear);
+    el("line", { x1: S.ub.F - 0.5, y1: cupTop + 0.4, x2: S.ub.F - 3.2, y2: y.shoulder - 0.4, stroke: "var(--garment)", "stroke-width": 0.9 }, wear);
+    el("path", { d: `M-40,${y.belly + 1.6} L40,${y.belly + 2.6} L40,${y.hip - 0.5} Q6,${y.crotch - 1} 0,${y.crotch + 2} L-40,${y.crotch + 3.5} Z` }, wear);
+    // ear
+    el("ellipse", { cx: -1.6 * G.H / 159 + 0.8, cy: G.top + 11.5 * (22 * Math.pow(G.H / 159, 0.4)) / 22, rx: 1.3, ry: 2.6, fill: "var(--skin)", stroke: "var(--skin-edge)", "stroke-width": 0.3 }, g);
+    // arm on top with its own outline
+    el("path", { d: S.arm, fill: "var(--skin)", stroke: "var(--skin-edge)", "stroke-width": 0.45, "stroke-linejoin": "round" }, g);
+  }
+
+  function renderGhost(on) {
+    const g = $("ghost"); g.innerHTML = "";
+    if (!on) return;
+    const R = geometry(computeBody(REF.H, REF.W, REF.BF));
+    [R.F.head, R.F.armR, R.F.armL, R.F.legR, R.F.legL, R.F.torso].forEach((d) => el("path", { d }, g));
+    const s = el("g", { transform: `translate(${SIDE_X},0)` }, g);
+    [R.S.head, R.S.leg, R.S.torso, R.S.arm].forEach((d) => el("path", { d }, s));
+  }
+
+  function renderTapes(G, b, on) {
+    const g = $("tapes"); g.innerHTML = "";
+    if (!on) return;
+    const items = [["胸", "bust", b.g.bust], ["腰", "waist", b.g.waist], ["臀", "hip", b.g.hip]];
+    items.forEach(([label, k, val]) => {
+      const [half, yy] = G.F.tape[k];
+      el("line", { x1: -half - 0.6, x2: half + 0.6, y1: yy, y2: yy, stroke: "var(--tape)", "stroke-width": 0.9, "stroke-linecap": "round" }, g);
+      const [b0, f0, ys] = G.S.tape[k];
+      el("line", { x1: SIDE_X + b0 - 0.4, x2: SIDE_X + f0 + 0.4, y1: ys, y2: ys, stroke: "var(--tape)", "stroke-width": 0.9, "stroke-linecap": "round" }, g);
+      // label to the right of the side view
+      const lx = SIDE_X + 24, ly = ys;
+      el("line", { x1: SIDE_X + f0 + 1, x2: lx - 1, y1: ys, y2: ly, stroke: "var(--tape)", "stroke-width": 0.25, "stroke-dasharray": "0.8 0.8" }, g);
+      el("rect", { x: lx - 0.5, y: ly - 3, width: 18.5, height: 6, rx: 1.2, fill: "var(--tape)" }, g);
+      const t = el("text", { x: lx + 1, y: ly + 1.25, "font-size": 3.3, fill: "var(--tape-ink)", "font-weight": 700 }, g);
+      t.textContent = label;
+      const v = el("text", { x: lx + 17, y: ly + 1.25, "font-size": 3.3, fill: "var(--tape-ink)", "text-anchor": "end", class: "mono" }, g);
+      v.textContent = f1(val);
+    });
+  }
+
+  /* ---------------- Classification ---------------- */
+  const CATS = [
+    { id: "thin", name: "偏瘦", color: "var(--c-thin)", desc: "BMI 低於 18.5，體脂也不高，整體骨感、四肢纖細。" },
+    { id: "fit", name: "精實運動型", color: "var(--c-fit)", desc: "體重在健康範圍且體脂低於 20%，肌肉線條明顯。" },
+    { id: "std", name: "標準", color: "var(--c-std)", desc: "BMI 與體脂都在一般建議範圍內。" },
+    { id: "hidden", name: "隱性肥胖（泡芙人）", color: "var(--c-hidden)", desc: "BMI 看起來正常甚至偏瘦，但體脂率超過 30%，肌肉量偏少。" },
+    { id: "muscle", name: "結實肌肉型", color: "var(--c-muscle)", desc: "BMI 超過 24，但體脂率不到 25%，重量主要來自肌肉。" },
+    { id: "over", name: "過重", color: "var(--c-over)", desc: "BMI 24 以上、體脂 25–30%，可先留意腰圍變化。" },
+    { id: "obese", name: "肥胖", color: "var(--c-obese)", desc: "BMI 24 以上且體脂率 30% 以上，或 BMI 已達 27。" },
+  ];
+  function classify(bmi, bf) {
+    if (bmi >= 27 && bf >= 25) return "obese";
+    if (bmi >= 24) return bf < 25 ? "muscle" : bf < 30 ? "over" : "obese";
+    if (bf > 30) return "hidden";
+    if (bmi < 18.5) return "thin";
+    if (bf < 20) return "fit";
+    return "std";
+  }
+  const catById = (id) => CATS.find((c) => c.id === id);
+
+  /* ---------------- XY pad ---------------- */
+  const pad = $("pad");
+  const PX0 = 34, PX1 = 312, PY0 = 18, PY1 = 182;
+  const wx = (w) => PX0 + (w - 40) / 40 * (PX1 - PX0);
+  const by = (bf) => PY1 - (bf - 15) / 25 * (PY1 - PY0);
+  const xw = (x) => 40 + (x - PX0) / (PX1 - PX0) * 40;
+  const ybf = (yy) => 15 + (PY1 - yy) / (PY1 - PY0) * 25;
+
+  function renderPad(H, W, BF) {
+    pad.innerHTML = "";
+    const Hm = H / 100;
+    const defs = el("defs", {}, pad);
+    const pat = el("pattern", { id: "hatch", width: 5, height: 5, patternUnits: "userSpaceOnUse", patternTransform: "rotate(45)" }, defs);
+    el("line", { x1: 0, y1: 0, x2: 0, y2: 5, stroke: "var(--warn)", "stroke-width": 1, opacity: 0.45 }, pat);
+    // category cells
+    const wB = [40, 18.5 * Hm * Hm, 24 * Hm * Hm, 27 * Hm * Hm, 80].map((v) => clamp(v, 40, 80)).sort((a, b) => a - b);
+    const bB = [15, 20, 25, 30, 40];
+    for (let i = 0; i < wB.length - 1; i++) for (let j = 0; j < bB.length - 1; j++) {
+      if (wB[i + 1] - wB[i] < 0.01) continue;
+      const mw = (wB[i] + wB[i + 1]) / 2, mb = (bB[j] + bB[j + 1]) / 2;
+      const c = catById(classify(mw / (Hm * Hm), mb));
+      el("rect", { x: wx(wB[i]), y: by(bB[j + 1]), width: wx(wB[i + 1]) - wx(wB[i]), height: by(bB[j]) - by(bB[j + 1]), fill: c.color }, pad);
+    }
+    // FFMI rarity regions
+    const curve = (ffmi) => { const pts = []; for (let w = 40; w <= 80.01; w += 1) pts.push([w, (1 - ffmi * Hm * Hm / w) * 100]); return pts; };
+    const hi = curve(21).filter(([, b]) => b >= 15 - 5);
+    const hiPts = hi.map(([w, b]) => `${wx(w).toFixed(1)},${by(clamp(b, 15, 40)).toFixed(1)}`);
+    el("polygon", { points: `${hiPts.join(" ")} ${wx(80)},${by(15)}`, fill: "url(#hatch)" }, pad);
+    const lo = curve(12.5);
+    const loPts = lo.map(([w, b]) => `${wx(w).toFixed(1)},${by(clamp(b, 15, 40)).toFixed(1)}`);
+    el("polygon", { points: `${wx(40)},${by(40)} ${loPts.join(" ")} ${wx(80)},${by(40)}`, fill: "url(#hatch)" }, pad);
+    // frame + ticks
+    el("rect", { x: PX0, y: PY0, width: PX1 - PX0, height: PY1 - PY0, fill: "none", stroke: "var(--line)" }, pad);
+    for (let w = 40; w <= 80; w += 10) {
+      el("line", { x1: wx(w), x2: wx(w), y1: PY1, y2: PY1 + 3, stroke: "var(--muted)" }, pad);
+      const t = el("text", { x: wx(w), y: PY1 + 12, "text-anchor": "middle", "font-size": 9, fill: "var(--muted)" }, pad); t.textContent = w;
+    }
+    const tx = el("text", { x: PX1, y: PY1 + 24, "text-anchor": "end", "font-size": 9, fill: "var(--muted)" }, pad); tx.textContent = "體重 kg";
+    for (let b = 15; b <= 40; b += 5) {
+      el("line", { x1: PX0 - 3, x2: PX0, y1: by(b), y2: by(b), stroke: "var(--muted)" }, pad);
+      const t = el("text", { x: PX0 - 5, y: by(b) + 3, "text-anchor": "end", "font-size": 9, fill: "var(--muted)" }, pad); t.textContent = b;
+    }
+    const ty = el("text", { x: 2, y: 9, "font-size": 9, fill: "var(--muted)" }, pad); ty.textContent = "體脂%";
+    // BMI lines
+    [18.5, 24, 27].forEach((v) => {
+      const w = v * Hm * Hm; if (w < 40 || w > 80) return;
+      el("line", { x1: wx(w), x2: wx(w), y1: PY0, y2: PY1, stroke: "var(--ink)", "stroke-width": 0.8, "stroke-dasharray": "3 3", opacity: 0.55 }, pad);
+      const t = el("text", { x: wx(w) + 2, y: PY0 + 10, "font-size": 8.5, fill: "var(--ink)", opacity: 0.75 }, pad); t.textContent = `BMI ${v}`;
+    });
+    // marker
+    const mx = wx(W), my = by(BF);
+    el("line", { x1: mx, x2: mx, y1: PY0, y2: PY1, stroke: "var(--ink)", "stroke-width": 0.6, opacity: 0.35 }, pad);
+    el("line", { x1: PX0, x2: PX1, y1: my, y2: my, stroke: "var(--ink)", "stroke-width": 0.6, opacity: 0.35 }, pad);
+    el("circle", { cx: wx(REF.W), cy: by(REF.BF), r: 4, fill: "none", stroke: "var(--ghost)", "stroke-width": 1.5, "stroke-dasharray": "2 1.5" }, pad);
+    el("circle", { cx: mx, cy: my, r: 8, fill: "var(--ink)", opacity: 0.12 }, pad);
+    el("circle", { cx: mx, cy: my, r: 5.5, fill: "var(--tape)", stroke: "var(--ink)", "stroke-width": 1.5 }, pad);
+  }
+
+  /* ---------------- Stats ---------------- */
+  function renderStats(b) {
+    const cat = catById(classify(b.bmi, b.BF));
+    $("catPill").textContent = cat.name;
+    $("catPill").style.background = cat.color;
+    $("catDesc").textContent = cat.desc;
+    const whr = b.g.waist / b.g.hip, whtr = b.g.waist / b.H;
+    const cupIdx = clamp(Math.round((b.bustDiff - 7.5) / 2.5), 0, 7);
+    const cup = ["AA", "A", "B", "C", "D", "E", "F", "G"][cupIdx];
+    const flag = (txt, bad) => bad ? `<span class="flag" style="background:var(--c-obese)">${txt}</span>` : "";
+    const rows = [
+      ["BMI", f1(b.bmi), "", flag(b.bmi < 18.5 ? "過輕" : b.bmi >= 27 ? "肥胖" : b.bmi >= 24 ? "過重" : "", b.bmi < 18.5 || b.bmi >= 24)],
+      ["體脂重", f1(b.F), "kg", ""],
+      ["去脂體重", f1(b.L), "kg", ""],
+      ["胸圍 / 下胸圍", `${b.g.bust.toFixed(0)}/${b.g.underbust.toFixed(0)}`, "cm", `<small>約 ${cup}</small>`],
+      ["腰圍", f1(b.g.waist), "cm", flag("腹部肥胖", b.g.waist >= 80)],
+      ["臀圍", f1(b.g.hip), "cm", ""],
+      ["大腿圍", f1(b.g.thigh), "cm", ""],
+      ["上臂圍", f1(b.g.upperArm), "cm", ""],
+      ["小腿圍", f1(b.g.calf), "cm", ""],
+      ["腰臀比", whr.toFixed(2), "", flag("≥0.85", whr >= 0.85)],
+      ["腰圍身高比", whtr.toFixed(2), "", flag("≥0.5", whtr >= 0.5)],
+      ["FFMI", f1(b.ffmi), "", ""],
+    ];
+    $("stats").innerHTML = rows.map(([k, v, u, extra]) => `<div><dt>${k}</dt><dd>${v}${u ? `<small>${u}</small>` : ""}${extra}</dd></div>`).join("");
+    const warn = $("warn");
+    if (b.ffmi > 21) { warn.hidden = false; warn.textContent = `去脂體重指數 ${f1(b.ffmi)}，已接近或超過女性健美選手的水準，一般人很少見，圖形僅供參考。`; }
+    else if (b.ffmi < 12.5) { warn.hidden = false; warn.textContent = `去脂體重指數 ${f1(b.ffmi)}，肌肉與骨骼量低於一般成年女性，這個組合在現實中少見。`; }
+    else warn.hidden = true;
+    document.querySelectorAll("#catLegend li").forEach((li) => li.classList.toggle("on", li.dataset.id === cat.id));
+  }
+
+  /* ---------------- Wiring ---------------- */
+  const inputs = { h: $("h"), w: $("w"), bf: $("bf") };
+  const state = { ghost: true, tape: true };
+  let raf = 0;
+  function update() {
+    raf = 0;
+    const H = +inputs.h.value, W = +inputs.w.value, BF = +inputs.bf.value;
+    $("hOut").innerHTML = `${f1(H)}<span>cm</span>`;
+    $("wOut").innerHTML = `${f1(W)}<span>kg</span>`;
+    $("bfOut").innerHTML = `${f1(BF)}<span>%</span>`;
+    const b = computeBody(H, W, BF);
+    const G = geometry(b);
+    renderFront(G, b);
+    renderSide(G, b);
+    renderTapes(G, b, state.tape);
+    const hl = $("headLine"); hl.setAttribute("y1", G.top); hl.setAttribute("y2", G.top);
+    const ht = $("headLabel"); ht.setAttribute("y", G.top - 1.4); ht.textContent = `${f1(H)} cm`;
+    renderPad(H, W, BF);
+    renderStats(b);
+  }
+  const schedule = () => { if (!raf) raf = requestAnimationFrame(update); };
+
+  function setVal(id, v) {
+    const inp = inputs[id];
+    const step = +inp.step || 0.5;
+    v = clamp(Math.round(v / step) * step, +inp.min, +inp.max);
+    inp.value = v;
+  }
+
+  buildStatic();
+  $("catLegend").innerHTML = CATS.map((c) => `<li data-id="${c.id}"><i style="background:${c.color}"></i>${c.name}</li>`).join("")
+    + `<li><i style="background:repeating-linear-gradient(45deg,var(--warn) 0 1px,transparent 1px 4px)"></i>罕見組合</li>`;
+  Object.values(inputs).forEach((inp) => inp.addEventListener("input", schedule));
+  document.querySelectorAll(".step").forEach((btn) => {
+    let timer = 0, rep = 0;
+    const fire = () => { setVal(btn.dataset.for, +inputs[btn.dataset.for].value + +btn.dataset.d); schedule(); };
+    const stop = () => { clearTimeout(timer); clearInterval(rep); timer = rep = 0; };
+    btn.addEventListener("pointerdown", (e) => { e.preventDefault(); fire(); timer = setTimeout(() => { rep = setInterval(fire, 60); }, 350); });
+    ["pointerup", "pointerleave", "pointercancel"].forEach((ev) => btn.addEventListener(ev, stop));
+    btn.addEventListener("keydown", (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); fire(); } });
+  });
+  document.querySelectorAll(".chip").forEach((c) => c.addEventListener("click", () => {
+    const [h, w, bf] = c.dataset.p.split(",").map(Number);
+    setVal("h", h); setVal("w", w); setVal("bf", bf); schedule();
+  }));
+  $("ghostToggle").addEventListener("change", (e) => { state.ghost = e.target.checked; renderGhost(state.ghost); });
+  $("tapeToggle").addEventListener("change", (e) => { state.tape = e.target.checked; schedule(); });
+
+  // pad dragging
+  const padPoint = (e) => {
+    const r = pad.getBoundingClientRect();
+    const x = (e.clientX - r.left) / r.width * 320, yy = (e.clientY - r.top) / r.height * 210;
+    setVal("w", xw(x)); setVal("bf", ybf(yy)); schedule();
+  };
+  pad.addEventListener("pointerdown", (e) => { pad.setPointerCapture(e.pointerId); padPoint(e); });
+  pad.addEventListener("pointermove", (e) => { if (pad.hasPointerCapture(e.pointerId)) padPoint(e); });
+  pad.addEventListener("keydown", (e) => {
+    const k = { ArrowLeft: ["w", -0.5], ArrowRight: ["w", 0.5], ArrowUp: ["bf", 0.5], ArrowDown: ["bf", -0.5] }[e.key];
+    if (!k) return; e.preventDefault(); setVal(k[0], +inputs[k[0]].value + k[1] * (e.shiftKey ? 4 : 1)); schedule();
+  });
+
+  // drag on the figure: vertical = height, horizontal = weight
+  let figDrag = null;
+  svg.addEventListener("pointerdown", (e) => {
+    figDrag = { x: e.clientX, y: e.clientY, h: +inputs.h.value, w: +inputs.w.value, scale: 194 / svg.getBoundingClientRect().height };
+    svg.setPointerCapture(e.pointerId);
+  });
+  svg.addEventListener("pointermove", (e) => {
+    if (!figDrag || !svg.hasPointerCapture(e.pointerId)) return;
+    const dy = (figDrag.y - e.clientY) * figDrag.scale, dx = (e.clientX - figDrag.x) * figDrag.scale;
+    setVal("h", figDrag.h + dy); setVal("w", figDrag.w + dx * 0.4); schedule();
+  });
+  ["pointerup", "pointercancel"].forEach((ev) => svg.addEventListener(ev, () => { figDrag = null; }));
+
+  renderGhost(true);
+  update();
+  window.__bodyview = { computeBody, geometry, classify };
+})();
+</script>
+<!-- ARTIFACT-END -->
+</body>
+</html>
