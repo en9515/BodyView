@@ -1,0 +1,541 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>BodyView 3D</title>
+<style>
+:root { --bg:#e9eced; --panel:#f8fafa; --ink:#1d2a2f; --muted:#5d6d72; --line:#d3dbdc; --tape:#e0ab2c; --tape-ink:#3a2a00; }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) { --bg:#141a1c; --panel:#1b2427; --ink:#e3ebec; --muted:#9aabaf; --line:#2e3b3f; color-scheme:dark; } }
+:root[data-theme="dark"] { --bg:#141a1c; --panel:#1b2427; --ink:#e3ebec; --muted:#9aabaf; --line:#2e3b3f; color-scheme:dark; }
+* { box-sizing:border-box; }
+body { margin:0; background:var(--bg); color:var(--ink); font-family:"Noto Sans TC","PingFang TC","Microsoft JhengHei",system-ui,sans-serif;
+  padding-left:max(16px,env(safe-area-inset-left,0px)); padding-right:max(16px,env(safe-area-inset-right,0px)); padding-block:16px 32px; }
+.wrap { max-width:1100px; margin:0 auto; display:grid; grid-template-columns:minmax(0,1.4fr) minmax(0,1fr); gap:18px; }
+.stage { position:relative; background:radial-gradient(ellipse at 50% 35%, var(--panel), var(--bg)); border:1px solid var(--line); border-radius:14px; height:min(78vh,760px); min-height:420px; overflow:hidden; }
+.stage canvas { display:block; width:100%; height:100%; touch-action:none; cursor:grab; }
+.tag { position:absolute; transform:translate(6px,-50%); background:var(--tape); color:var(--tape-ink); font:600 12px/1 ui-monospace,Menlo,monospace; padding:4px 7px; border-radius:5px; pointer-events:none; white-space:nowrap; }
+.views { position:absolute; left:10px; top:10px; display:flex; gap:6px; flex-wrap:wrap; }
+.views button { font:inherit; font-size:13px; padding:4px 11px; border-radius:999px; border:1px solid var(--line); background:var(--panel); color:var(--ink); cursor:pointer; }
+.hint { position:absolute; left:12px; bottom:10px; font-size:12px; color:var(--muted); }
+.panel { background:var(--panel); border:1px solid var(--line); border-radius:14px; padding:16px 18px; align-self:start; display:grid; gap:12px; }
+.row { display:grid; grid-template-columns:4em 1fr 5.5em; align-items:center; gap:10px; }
+.row output { font:500 18px ui-monospace,Menlo,monospace; text-align:right; }
+input[type=range] { width:100%; accent-color:#c8941f; }
+.stats { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:8px 12px; margin:0; }
+.stats dt { font-size:12px; color:var(--muted); } .stats dd { margin:0; font:16px ui-monospace,Menlo,monospace; }
+.tones { display:flex; gap:8px; align-items:center; font-size:13px; color:var(--muted); }
+.tones button { width:24px; height:24px; border-radius:50%; border:2px solid var(--line); cursor:pointer; }
+@media (max-width:820px) { .wrap { grid-template-columns:minmax(0,1fr); } .stage { height:58vh; min-height:360px; } }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="stage" id="stage">
+    <canvas id="cv"></canvas>
+    <div class="views">
+      <button data-yaw="0">正面</button><button data-yaw="-0.6">斜側</button><button data-yaw="-1.5708">側面</button><button data-yaw="3.1416">背面</button>
+    </div>
+    <div id="tags"></div>
+    <div class="hint">拖曳人像可旋轉</div>
+  </div>
+  <div class="panel">
+    <div class="row"><label for="h">身高</label><input type="range" id="h" min="150" max="175" step="0.5" value="159"><output id="hO"></output></div>
+    <div class="row"><label for="w">體重</label><input type="range" id="w" min="40" max="80" step="0.5" value="56"><output id="wO"></output></div>
+    <div class="row"><label for="bf">體脂率</label><input type="range" id="bf" min="15" max="40" step="0.5" value="30"><output id="bfO"></output></div>
+    <div class="tones">膚色 <button data-c="#efcfb6" style="background:#efcfb6" aria-label="淺"></button><button data-c="#dcae8e" style="background:#dcae8e" aria-label="中"></button><button data-c="#b07a5c" style="background:#b07a5c" aria-label="深"></button></div>
+    <dl class="stats" id="stats"></dl>
+  </div>
+</div>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+(() => {
+"use strict";
+const $ = (id) => document.getElementById(id);
+const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
+const lerp = (a, b, t) => a + (b - a) * t;
+const TAU = Math.PI * 2;
+
+/* ---------- body measurement model ---------- */
+const REF = { H: 159, W: 56, BF: 30 };
+const REF_F = REF.W * REF.BF / 100, REF_L = REF.W - REF_F;
+const FH0 = REF_F / (REF.H / 100), LH0 = REF_L / (REF.H / 100);
+const REG = {
+  neck:[31.5,.20,1], underbust:[71,.35,1.1], waist:[70,.42,1.38], belly:[83,.5,1.28], hip:[92,.5,.95],
+  thigh:[53,.52,.95], midthigh:[46,.48,.95], aboveKnee:[38,.45,.95], knee:[34.5,.35,1], calf:[33.5,.38,.95],
+  lowerCalf:[25.5,.3,.95], ankle:[20.5,.12,1], upperArm:[26,.5,1.05], elbow:[22,.35,1], forearm:[22,.32,1], wrist:[14.5,.12,1],
+};
+function computeBody(H, W, BF) {
+  const bf = BF / 100, F = W * bf, L = W - F, Hm = H / 100;
+  const fr = (F / Hm) / FH0, lr = (L / Hm) / LH0, bmi = W / (Hm * Hm);
+  const g = {};
+  for (const k in REG) { const [g0, p, e] = REG[k]; g[k] = g0 * Math.sqrt(p * Math.pow(fr, e) + (1 - p) * lr); }
+  const bustDiff = clamp(12.5 * Math.pow(fr, 0.62) * Math.pow(lr, 0.15), 5, 28);
+  g.bust = g.underbust + bustDiff;
+  const fs = bf - 0.30;
+  const R = { neck:1.05, underbust:1.30, waist:clamp(1.42-1.1*fs-0.018*(bmi-21.5),1.05,1.6), belly:clamp(1.32-1.0*fs-0.016*(bmi-21.5),1.0,1.5),
+    hip:1.38, thigh:1.05, midthigh:1.0, aboveKnee:1.02, knee:1.05, calf:0.98, lowerCalf:1.0, ankle:1.1, upperArm:1, elbow:1, forearm:1.1, wrist:1.35 };
+  const WD = {};
+  for (const k in R) { const r = R[k], D = g[k] / (Math.PI * Math.sqrt((r*r+1)/2)); WD[k] = { w: r*D, d: D }; }
+  const s = H / REF.H;
+  return { H, W, BF, bf, F, L, fr, lr, bmi, g, WD, bustDiff, s, headS: Math.pow(s, .4), bia: 35.5*s*(0.9+0.1*Math.sqrt(lr)), ffmi: L/(Hm*Hm) };
+}
+
+/* ---------- math helpers ---------- */
+function pchip(xs, ys) {
+  const n = xs.length, h = [], d = [], m = new Array(n);
+  for (let i = 0; i < n - 1; i++) { h[i] = xs[i+1]-xs[i]; d[i] = (ys[i+1]-ys[i]) / h[i]; }
+  m[0] = 0; m[n-1] = 0;
+  for (let i = 1; i < n - 1; i++) {
+    if (d[i-1] * d[i] <= 0) m[i] = 0;
+    else { const w1 = 2*h[i]+h[i-1], w2 = h[i]+2*h[i-1]; m[i] = (w1+w2) / (w1/d[i-1] + w2/d[i]); }
+  }
+  return (x) => {
+    if (x <= xs[0]) return ys[0];
+    if (x >= xs[n-1]) return ys[n-1];
+    let i = 0; while (x > xs[i+1]) i++;
+    const t = (x - xs[i]) / h[i], t2 = t*t, t3 = t2*t;
+    return (2*t3-3*t2+1)*ys[i] + (t3-2*t2+t)*h[i]*m[i] + (-2*t3+3*t2)*ys[i+1] + (t3-t2)*h[i]*m[i+1];
+  };
+}
+function profile(levels, key = "y") {
+  levels = levels.slice().sort((a, b) => a[key] - b[key]);
+  const xs = levels.map((l) => l[key]), fns = {};
+  for (const k in levels[0]) if (k !== key) fns[k] = pchip(xs, levels.map((l) => l[k]));
+  const out = (x) => { const o = {}; for (const k in fns) o[k] = fns[k](x); return o; };
+  out.min = xs[0]; out.max = xs[xs.length-1];
+  return out;
+}
+const spow = (v, e) => Math.sign(v) * Math.pow(Math.abs(v), e);
+const gauss = (d, s) => Math.exp(-(d*d) / (2*s*s));
+const sub = (a, b) => [a[0]-b[0], a[1]-b[1], a[2]-b[2]];
+const cross = (a, b) => [a[1]*b[2]-a[2]*b[1], a[2]*b[0]-a[0]*b[2], a[0]*b[1]-a[1]*b[0]];
+const dot = (a, b) => a[0]*b[0]+a[1]*b[1]+a[2]*b[2];
+const norm = (a) => { const l = Math.hypot(a[0], a[1], a[2]) || 1; return [a[0]/l, a[1]/l, a[2]/l]; };
+
+function loft(rings, colorFn) {
+  const R = rings.length, M = rings[0].length;
+  const pos = new Float32Array((R*M + 2) * 3);
+  let k = 0;
+  for (const ring of rings) for (const p of ring) { pos[k++] = p[0]; pos[k++] = p[1]; pos[k++] = p[2]; }
+  const cen = (ring) => { let x=0,y=0,z=0; for (const p of ring) { x+=p[0]; y+=p[1]; z+=p[2]; } return [x/M, y/M, z/M]; };
+  const c0 = cen(rings[0]), c1 = cen(rings[R-1]);
+  pos.set(c0, R*M*3); pos.set(c1, R*M*3 + 3);
+  const P = (i) => [pos[i*3], pos[i*3+1], pos[i*3+2]];
+  const idx = [];
+  for (let r = 0; r < R-1; r++) for (let j = 0; j < M; j++) {
+    const a = r*M+j, b = r*M+(j+1)%M, c = (r+1)*M+j, d = (r+1)*M+(j+1)%M;
+    idx.push(a, c, b, b, c, d);
+  }
+  const mid = Math.floor(R/2);
+  { const a = P(mid*M), c = P((mid+1)*M), b = P(mid*M+1);
+    if (dot(cross(sub(c, a), sub(b, a)), sub(a, cen(rings[mid]))) < 0)
+      for (let i = 0; i < idx.length; i += 3) { const t = idx[i+1]; idx[i+1] = idx[i+2]; idx[i+2] = t; } }
+  const cap = (ci, base, ref) => {
+    const n = cross(sub(P(base), P(ci)), sub(P(base+1), P(ci)));
+    const flip = dot(n, sub(P(ci), ref)) < 0;
+    for (let j = 0; j < M; j++) { const a = base+j, b = base+(j+1)%M; flip ? idx.push(ci, b, a) : idx.push(ci, a, b); }
+  };
+  cap(R*M, 0, cen(rings[Math.min(2, R-1)]));
+  cap(R*M+1, (R-1)*M, cen(rings[Math.max(R-3, 0)]));
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute("position", new THREE.BufferAttribute(pos, 3));
+  if (colorFn) {
+    const col = new Float32Array(pos.length);
+    for (let i = 0; i < pos.length / 3; i++) { const c = colorFn(pos[i*3], pos[i*3+1], pos[i*3+2]); col[i*3]=c.r; col[i*3+1]=c.g; col[i*3+2]=c.b; }
+    geo.setAttribute("color", new THREE.BufferAttribute(col, 3));
+  }
+  geo.setIndex(idx);
+  geo.computeVertexNormals();
+  return geo;
+}
+function ringXZ(p, c, s) { const e = 2 / p.n; return [p.cx + spow(c, e) * (c >= 0 ? p.xo : p.xi), p.cz + spow(s, e) * (s >= 0 ? p.zf : p.zb)]; }
+
+/* ---------- build a 3D body ---------- */
+function buildBody(b, skinHex) {
+  const H = b.H, s = b.s, Yf = (f) => H * (1 - f);
+  const hw = (k) => b.WD[k].w / 2, hd = (k) => b.WD[k].d;
+  const headH = 22 * b.headS, headW = 15.2 * b.headS * (1 + 0.06 * clamp(b.fr - 1, -0.6, 1.5));
+  const chinY = H - headH;
+  const y = { neckBase: Yf(.168), shoulder: Yf(.186), armpit: Yf(.243), bust: Yf(.282), ub: Yf(.322), waist: Yf(.385),
+    belly: Yf(.437), hip: Yf(.497), crotch: Yf(.535), mid: Yf(.62), ak: Yf(.688), knee: Yf(.726), bk: Yf(.758), calf: Yf(.80), lc: Yf(.875), ankle: Yf(.955) };
+  const shH = b.bia / 2, nH = hw("neck"), nD = hd("neck");
+  const ubD = hd("underbust"), ubF = -0.5 + ubD/2, ubB = 0.5 + ubD/2;
+  const wD = hd("waist"), beD = hd("belly"), hD = hd("hip"), tD = hd("thigh");
+  const kbe = clamp(0.56 + 0.08 * (b.fr - 1), 0.5, 0.68);
+  const bump = clamp(1.0 + 0.7 * (b.fr - 1), 0.5, 2.6);
+
+  const skin = new THREE.Color(skinHex).convertSRGBToLinear();
+  const cloth = new THREE.Color("#3b4f58").convertSRGBToLinear();
+
+  // torso
+  const T = profile([
+    { y: y.crotch - 2.2, cz: -1, xo: hw("hip")*.45, zf: 3, zb: 4, n: 2 },
+    { y: y.crotch + 0.5, cz: 0, xo: hw("hip")*.93, zf: 0.4 + tD*.5, zb: -(-1 - hD*.55*.86), n: 2.2 },
+    { y: y.hip, cz: 0, xo: hw("hip"), zf: -1 + hD*.45 + .6, zb: 1 + hD*.55 - bump*.6, n: 2.3 },
+    { y: y.belly, cz: 0, xo: hw("belly"), zf: .6 + beD*kbe, zb: -(.6 - beD*(1-kbe) - .5), n: 2.2 },
+    { y: y.waist, cz: 0, xo: hw("waist"), zf: 1 + wD*.55, zb: -(1 - wD*.45), n: 2.1 },
+    { y: y.ub, cz: 0, xo: hw("underbust"), zf: ubF, zb: ubB, n: 2.3 },
+    { y: y.bust, cz: 0, xo: hw("underbust")*1.03 + .04*b.bustDiff, zf: ubF + .4, zb: ubB - .3, n: 2.4 },
+    { y: y.armpit, cz: 0, xo: Math.max(hw("underbust")*1.04, shH - 2.2), zf: ubF - .4, zb: ubB - .6, n: 2.5 },
+    { y: y.shoulder - 1.2, cz: -.6, xo: shH*.98, zf: ubF - 2.4, zb: ubB - 1.6, n: 2.6 },
+    { y: y.shoulder + 1.2, cz: -1.2, xo: shH*.86, zf: ubF - 4.2, zb: ubB - 3.6, n: 2.4 },
+    { y: y.shoulder + 2.8, cz: -1.8, xo: nH + (shH - nH)*.42, zf: 4, zb: 5.4, n: 2.2 },
+    { y: y.neckBase, cz: -2, xo: nH*1.06, zf: nD/2 + .5, zb: nD/2 + .3, n: 2 },
+    { y: (y.neckBase + chinY)/2, cz: -1.6, xo: nH, zf: nD/2, zb: nD/2, n: 2 },
+    { y: chinY + 2.5, cz: -1, xo: nH*.95, zf: nD/2, zb: nD/2, n: 2 },
+    { y: chinY + 5, cz: -1, xo: 2, zf: 2, zb: 2, n: 2 },
+  ].map((l) => ({ ...l, cx: 0, xi: l.xo })));
+
+  const bx = hw("underbust")*.42 + .02*b.bustDiff, by = y.bust - .12*(b.bustDiff - 12);
+  const proj = .44 * b.bustDiff, bsx = 3.0 + .17*b.bustDiff, bsu = 3.6 + .2*b.bustDiff, bsd = 2.5 + .13*b.bustDiff;
+  const gx = hw("hip")*.42, gy = Yf(.505), gsx = hw("hip")*.4;
+  const navelY = y.belly + 2.2, clavY = Yf(.176);
+  function torsoPt(yy, c, sn) {
+    const p = T(yy);
+    let [x, z] = ringXZ(p, c, sn);
+    const ax = Math.abs(x);
+    if (sn > 0) {
+      const w = Math.pow(sn, 1.5);
+      const dz = proj * gauss(ax - bx, bsx) * gauss(yy - by, yy > by ? bsu : bsd) * w;
+      z += dz; x += Math.sign(x) * dz * .12;
+      z -= .7 * gauss(x, .5) * gauss(yy - navelY, .5) * w;
+      if (ax > 1.5 && ax < shH*.85) z += .4 * gauss(yy - (clavY - .1*ax), .55) * w;
+      if (b.BF < 25) z -= (25 - b.BF)/10 * .35 * gauss(x, .7) * (yy < y.ub - 2 && yy > navelY + 1 ? 1 : 0) * w;
+    } else {
+      const w = Math.pow(-sn, 1.4);
+      z -= bump * 1.4 * gauss(ax - gx, gsx) * gauss(yy - gy, yy > gy ? 6.5 : 4) * w;
+      z += 1.6 * gauss(x, .9) * (yy < y.hip + 4 ? gauss(Math.max(0, yy - (y.hip - 2)), 3) : 0) * w * Math.min(1, bump);
+      z += .45 * gauss(x, .8) * (yy > y.waist - 3 && yy < y.shoulder - 3 ? 1 : 0) * w;
+    }
+    return [x, yy, z];
+  }
+
+  // garments
+  const bandTop = y.ub + 4.2, cupPeak = by + .55*bsu;
+  const shoulderTop = y.shoulder + 1.6, strapShX = nH + (shH - nH)*.5;
+  const braTop = (x, z) => {
+    const cup = bandTop + (cupPeak - bandTop) * gauss(Math.abs(x) - bx, bsx*1.1);
+    const w = clamp((z + 2) / 6, 0, 1);
+    return lerp(bandTop, cup, w);
+  };
+  const waistband = y.belly - 2.2;
+  function garment(x, yy, z, legU) {
+    const ax = Math.abs(x);
+    if (legU === undefined) {
+      const top = braTop(x, z);
+      if (yy >= y.ub - 2 && yy <= top) return true;
+      if (yy > top && yy < shoulderTop + 1.5) {
+        const t = clamp((yy - top) / (shoulderTop - top), 0, 1);
+        const sx = lerp(z > 0 ? bx : bx*1.15, strapShX, t);
+        if (Math.abs(ax - sx) < .75) return true;
+      }
+      if (yy <= waistband) {
+        const side = clamp(ax / Math.max(1, T(yy).xo), 0, 1);
+        const open = y.crotch - 1 + (y.hip + 1 - y.crotch + 1) * Math.pow(side, 2) * (z > 0 ? 1 : .35);
+        return yy >= open;
+      }
+      return false;
+    }
+    if (yy > waistband) return false;
+    const open = y.crotch - .8 + (y.hip + 1.5 - y.crotch) * Math.pow(clamp((legU.u + 1)/2, 0, 1), 1.7) * (legU.v > 0 ? 1 : .45);
+    return yy >= open;
+  }
+  const colorOf = (g) => g ? cloth : skin;
+
+  const torsoRings = [];
+  const M = 176;
+  for (let yy = T.min; yy <= T.max + 1e-6; yy += 0.35) {
+    const ring = [];
+    for (let j = 0; j < M; j++) { const a = j / M * TAU; ring.push(torsoPt(yy, Math.cos(a), Math.sin(a))); }
+    torsoRings.push(ring);
+  }
+  const torsoGeo = loft(torsoRings, (x, yy, z) => colorOf(garment(x, yy, z)));
+
+  // legs (+x side, mirrored later)
+  const ankleC = .042*H, kneeH = hw("knee"), thighH = hw("thigh");
+  const legC0 = Math.max(hw("hip")*.985 - thighH, thighH*.8, .03*H);
+  const legCk = Math.max(kneeH + .3, legC0*.45 + ankleC*.55);
+  const legCc = Math.max(hw("calf") + .25, lerp(legCk, ankleC, .3));
+  const sideL = (k, c, kk) => ({ cz: c, zf: hd(k)*kk, zb: hd(k)*(1-kk) });
+  const LG = profile([
+    { y: 2.6, cx: ankleC, xo: hw("ankle")*.9, xi: hw("ankle")*.85, ...sideL("ankle", -.8, .55), n: 2 },
+    { y: y.ankle, cx: ankleC, xo: hw("ankle"), xi: hw("ankle")*.95, ...sideL("ankle", -.6, .55), n: 2 },
+    { y: y.lc, cx: lerp(legCc, ankleC, .6), xo: hw("lowerCalf"), xi: hw("lowerCalf")*.95, ...sideL("lowerCalf", -1, .45), n: 2 },
+    { y: y.calf, cx: legCc, xo: hw("calf")*1.0, xi: hw("calf")*1.0, ...sideL("calf", -1.4, .4), n: 2 },
+    { y: y.bk, cx: lerp(legCk, ankleC, .12), xo: hw("calf")*.9, xi: hw("calf")*.88, ...sideL("calf", -.6, .42), n: 2 },
+    { y: y.knee, cx: legCk, xo: kneeH, xi: kneeH, ...sideL("knee", .6, .55), n: 2.1 },
+    { y: y.ak, cx: lerp(legC0, legCk, .82), xo: hw("aboveKnee"), xi: hw("aboveKnee"), ...sideL("aboveKnee", 1, .52), n: 2 },
+    { y: y.mid, cx: lerp(legC0, legCk, .42), xo: hw("midthigh"), xi: hw("midthigh"), ...sideL("midthigh", 1, .55), n: 2 },
+    { y: y.crotch - 2.5, cx: legC0, xo: thighH, xi: thighH*.97, ...sideL("thigh", .4, .5), n: 2 },
+    { y: Yf(.48), cx: legC0*.9, xo: thighH*.95, xi: thighH*.8, ...sideL("thigh", -.5, .45), n: 2 },
+    { y: Yf(.46), cx: legC0*.8, xo: thighH*.5, xi: thighH*.4, cz: -.5, zf: 3, zb: 3, n: 2 },
+  ]);
+  const legRings = [], ML = 72;
+  for (let yy = LG.min; yy <= LG.max + 1e-6; yy += 0.6) {
+    const p = LG(yy), ring = [];
+    for (let j = 0; j < ML; j++) { const a = j / ML * TAU; const [x, z] = ringXZ(p, Math.cos(a), Math.sin(a)); ring.push([x, yy, z]); }
+    legRings.push(ring);
+  }
+  const legGeo = loft(legRings, (x, yy, z) => {
+    const p = LG(yy);
+    const u = x >= p.cx ? (x - p.cx) / p.xo : (x - p.cx) / p.xi;
+    return colorOf(garment(x, yy, z, { u, v: z - p.cz }));
+  });
+
+  // foot
+  const anP = LG(y.ankle);
+  const heel = anP.cz - anP.zb - 1.3, footL = .152*H;
+  const FP = profile([
+    [0, 1.2, 1.4], [.04, 2.5, 4.6], [.16, 2.8, 6.6], [.32, 3.1, 6.0], [.52, 3.5, 4.4], [.7, 4.2, 2.9], [.86, 4.0, 2.2], [.96, 3.1, 1.5], [1, 1.2, .8],
+  ].map(([u, w, h]) => ({ u, w: w*s, h: h*s })), "u");
+  const footRings = [];
+  for (let u = 0; u <= 1.0001; u += .02) {
+    const p = FP(u), z = heel + u*footL, cx = ankleC + u*1.4, ring = [];
+    for (let j = 0; j < 40; j++) {
+      const a = j / 40 * TAU, c = Math.cos(a), sn = Math.sin(a);
+      ring.push([cx + spow(c, 2/2.4) * p.w, p.h/2 + spow(sn, 2/2.4) * p.h/2 * (sn < 0 ? .9 : 1), z]);
+    }
+    footRings.push(ring);
+  }
+  const footGeo = loft(footRings, () => skin);
+
+  // arms
+  const frontHalf = (yy) => {
+    let v = 0;
+    if (yy >= T.min && yy <= T.max) v = T(yy).xo;
+    if (yy <= LG.max) { const p = LG(yy); v = Math.max(v, p.cx + p.xo); }
+    return v;
+  };
+  const Lu = .186*H, Lf = .146*H, Lh = .108*H;
+  const R = (k) => b.g[k] / TAU;
+  const uaR = R("upperArm"), delt = uaR*1.12;
+  const AS = profile([
+    [-2.5, delt*.55, delt*.6], [0, delt, delt*1.05], [.22*Lu, delt*.98, delt], [.55*Lu, uaR, uaR], [.85*Lu, uaR*.88, uaR*.9],
+    [Lu, R("elbow")*.95, R("elbow")], [Lu+.3*Lf, R("forearm")*.95, R("forearm")*1.05], [Lu+.75*Lf, R("forearm")*.72, R("forearm")*.9],
+    [Lu+Lf, R("wrist")*.75, R("wrist")*1.2], [Lu+Lf+.15*Lh, 1.5*s, 3.2*s], [Lu+Lf+.45*Lh, 1.35*s, 3.9*s], [Lu+Lf+.75*Lh, 1.0*s, 3.5*s],
+    [Lu+Lf+.95*Lh, .7*s, 2.2*s], [Lu+Lf+Lh, .25, .5],
+  ].map(([t, rx, rz]) => ({ t, rx, rz })), "t");
+  const start = [shH - uaR*.35, y.shoulder - 2.6, -1.8];
+  let armAxis;
+  const makeAxis = (th) => {
+    const d1 = norm([Math.sin(th), -Math.cos(th), .02]), d2 = norm([Math.sin(th + .09), -Math.cos(th + .09), .15]);
+    const E = [start[0] + d1[0]*Lu, start[1] + d1[1]*Lu, start[2] + d1[2]*Lu];
+    return (t) => t <= Lu ? [start[0] + d1[0]*t, start[1] + d1[1]*t, start[2] + d1[2]*t] : [E[0] + d2[0]*(t-Lu), E[1] + d2[1]*(t-Lu), E[2] + d2[2]*(t-Lu)];
+  };
+  let th = 4 * Math.PI / 180;
+  for (let i = 0; i < 70; i++) {
+    armAxis = makeAxis(th);
+    let ok = true;
+    for (let t = .2*Lu; t <= Lu+Lf+Lh; t += 2) {
+      const p = armAxis(t);
+      if (p[1] < y.armpit - 3 && p[0] - AS(t).rx < frontHalf(p[1]) + 1.2) { ok = false; break; }
+    }
+    if (ok) break;
+    th += .6 * Math.PI / 180;
+  }
+  const armRings = [];
+  for (let t = AS.min; t <= AS.max + 1e-6; t += .5) {
+    const p = armAxis(t), dir = norm(sub(armAxis(t + .5), armAxis(t - .5)));
+    const lat = norm(cross([0, 0, 1], dir).map((v) => -v)), fr = norm(cross(dir, lat).map((v) => -v));
+    const r = AS(t), ring = [];
+    for (let j = 0; j < 48; j++) {
+      const a = j / 48 * TAU, c = Math.cos(a), sn = Math.sin(a);
+      ring.push([p[0] + lat[0]*r.rx*c + fr[0]*r.rz*sn, p[1] + lat[1]*r.rx*c + fr[1]*r.rz*sn, p[2] + lat[2]*r.rx*c + fr[2]*r.rz*sn]);
+    }
+    armRings.push(ring);
+  }
+  const armGeo = loft(armRings, (x, yy, z) => {
+    if (yy > y.shoulder - 2 && yy < shoulderTop + 1.5 && Math.abs(Math.abs(x) - strapShX) < .75) return cloth;
+    return skin;
+  });
+
+  // head (local: yTop down from crown, x width, z depth)
+  const s1 = headW / 15.2, s2 = headH / 22, sd = b.headS, hz = .8;
+  const HP = profile([
+    [0.25, 1.4, 1.6, 1.8], [1.5, 4.8, 4.8, 6.2], [4, 6.8, 7.6, 8.6], [7, 7.4, 8.8, 9.3], [10, 7.5, 9.1, 9.2], [13, 7.0, 9.0, 8.6],
+    [15.5, 6.4, 8.8, 6.6], [17.5, 5.6, 8.6, 3.6], [19.5, 4.3, 8.0, 1.4], [21, 2.7, 6.6, 0], [21.9, 1.2, 4.6, -1.6],
+  ].map(([t, a, f, bk]) => ({ t, a, f, bk })), "t");
+  function headLocal(t, c, sn, inflate = 0) {
+    const p = HP(t);
+    let x = spow(c, 1) * (p.a + inflate), z = sn >= 0 ? sn * (p.f + inflate) : sn * (p.bk + inflate);
+    if (sn > 0 && !inflate) {
+      const w = Math.pow(sn, 3);
+      z += 2.1 * gauss(x, .85 + .25 * clamp((14.2 - t) / 3, 0, 1)) * (t < 14.2 ? gauss(t - 14.2, 2.8) : gauss(t - 14.2, .55)) * w;
+      z -= .7 * gauss(Math.abs(x) - 3.1, 1.2) * gauss(t - 10.2, 1.1) * w;
+      z += .35 * gauss(Math.abs(x) - 3.0, 1.8) * gauss(t - 8.6, .6) * w;
+      z += .45 * gauss(x, 1.7) * gauss(t - 16.3, .5) * w;
+      z += .35 * gauss(x, 1.6) * gauss(t - 20.2, .9) * w;
+    }
+    return [x, t, z];
+  }
+  const toWorld = ([x, t, z]) => [x * s1, H - t * s2, z * sd + hz];
+  const headRings = [];
+  for (let t = HP.min; t <= HP.max + 1e-6; t += .25) {
+    const ring = [];
+    for (let j = 0; j < 96; j++) { const a = j / 96 * TAU; ring.push(toWorld(headLocal(t, Math.cos(a), Math.sin(a)))); }
+    headRings.push(ring);
+  }
+  const headGeo = loft(headRings, () => skin);
+  const hairRings = [];
+  for (let t = -.5; t <= 16.5; t += .3) {
+    const ring = [];
+    for (let j = 0; j < 96; j++) {
+      const a = j / 96 * TAU, c = Math.cos(a), sn = Math.sin(a);
+      const hairline = sn > 0 ? 3.0 + 9.5 * Math.pow(Math.abs(c), 1.8) : 16;
+      const inside = t > hairline;
+      const inf = inside ? -1.2 : .65;
+      const tt = Math.max(t, .25);
+      const p = toWorld(headLocal(tt, c, sn, inf));
+      if (t < .25) p[1] += (.25 - t) * s2 * .9;
+      ring.push(p);
+    }
+    hairRings.push(ring);
+  }
+  const hairGeo = loft(hairRings, null);
+
+  return { torsoGeo, legGeo, footGeo, armGeo, headGeo, hairGeo, armAngle: th, levels: y, torsoPt, by,
+    bun: { x: 0, y: H - 6*s2, z: -10.2*sd + hz, r: 3.7*s1 }, ear: { x: 7.25*s1, y: H - 11.6*s2, z: -.4*sd + hz, s: s1 } };
+}
+
+/* ---------- three.js scene ---------- */
+const canvas = $("cv"), stage = $("stage");
+const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true });
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+renderer.outputEncoding = THREE.sRGBEncoding;
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.05;
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+const scene = new THREE.Scene();
+const camera = new THREE.PerspectiveCamera(26, 1, 10, 2000);
+scene.add(new THREE.HemisphereLight(0xfff4ea, 0x6b5f58, 0.75));
+const key = new THREE.DirectionalLight(0xfff0e2, 1.55);
+key.position.set(-120, 260, 220); key.castShadow = true;
+key.shadow.mapSize.set(2048, 2048);
+Object.assign(key.shadow.camera, { left: -90, right: 90, top: 200, bottom: -20, near: 50, far: 700 });
+key.shadow.bias = -0.0004; key.shadow.radius = 4;
+scene.add(key);
+const rim = new THREE.DirectionalLight(0xdfeaff, 0.85); rim.position.set(160, 140, -220); scene.add(rim);
+const fill = new THREE.DirectionalLight(0xffffff, 0.35); fill.position.set(200, 60, 120); scene.add(fill);
+const ground = new THREE.Mesh(new THREE.PlaneGeometry(600, 600), new THREE.ShadowMaterial({ opacity: 0.2 }));
+ground.rotation.x = -Math.PI / 2; ground.receiveShadow = true; scene.add(ground);
+
+const skinMat = new THREE.MeshPhysicalMaterial({ vertexColors: true, roughness: 0.58, metalness: 0, clearcoat: 0.08, clearcoatRoughness: 0.6 });
+const skinPlain = new THREE.MeshPhysicalMaterial({ roughness: 0.58, clearcoat: 0.08, clearcoatRoughness: 0.6 });
+const hairMat = new THREE.MeshStandardMaterial({ color: new THREE.Color("#2a211d").convertSRGBToLinear(), roughness: 0.42 });
+const tapeMat = new THREE.MeshStandardMaterial({ color: new THREE.Color("#e0ab2c").convertSRGBToLinear(), roughness: 0.5 });
+
+const figure = new THREE.Group(); scene.add(figure);
+let skinHex = "#dcae8e", yaw = 0, yawTarget = 0, pitch = 0.06, tapes = [];
+
+function clearFigure() {
+  figure.children.slice().forEach((m) => { figure.remove(m); m.geometry && m.geometry.dispose(); });
+}
+function addMesh(geo, mat, mirror) {
+  const m = new THREE.Mesh(geo, mat); m.castShadow = true; m.receiveShadow = true;
+  if (mirror) m.scale.x = -1;
+  figure.add(m); return m;
+}
+let current;
+function rebuild() {
+  const H = +$("h").value, W = +$("w").value, BF = +$("bf").value;
+  $("hO").textContent = H.toFixed(1) + " cm"; $("wO").textContent = W.toFixed(1) + " kg"; $("bfO").textContent = BF.toFixed(1) + " %";
+  const b = computeBody(H, W, BF), B = buildBody(b, skinHex);
+  clearFigure();
+  skinPlain.color.set(skinHex).convertSRGBToLinear();
+  addMesh(B.torsoGeo, skinMat);
+  addMesh(B.legGeo, skinMat); addMesh(B.legGeo, skinMat, true);
+  addMesh(B.footGeo, skinMat); addMesh(B.footGeo, skinMat, true);
+  addMesh(B.armGeo, skinMat); addMesh(B.armGeo, skinMat, true);
+  addMesh(B.headGeo, skinMat);
+  addMesh(B.hairGeo, hairMat);
+  const bun = addMesh(new THREE.SphereGeometry(B.bun.r, 32, 24), hairMat); bun.position.set(B.bun.x, B.bun.y, B.bun.z); bun.scale.set(1, .9, .95);
+  [1, -1].forEach((sg) => { const e = addMesh(new THREE.SphereGeometry(1, 20, 16), skinPlain); e.position.set(sg * B.ear.x, B.ear.y, B.ear.z); e.scale.set(.75*B.ear.s, 2.7*B.ear.s, 1.6*B.ear.s); });
+  // tape rings
+  tapes = [];
+  [["胸", B.by, b.g.bust], ["腰", B.levels.waist, b.g.waist], ["臀", B.levels.hip, b.g.hip]].forEach(([label, yy, val]) => {
+    const pts = [];
+    for (let j = 0; j < 160; j++) { const a = j / 160 * TAU; const p = B.torsoPt(yy, Math.cos(a), Math.sin(a)); pts.push(new THREE.Vector3(p[0]*1.012 + Math.sign(p[0])*.15, yy, p[2]*1.012 + Math.sign(p[2])*.15)); }
+    const geo = new THREE.TubeGeometry(new THREE.CatmullRomCurve3(pts, true), 200, .28, 6, true);
+    const m = addMesh(geo, tapeMat); m.castShadow = false;
+    tapes.push({ label, val, pts });
+  });
+  current = { b, B };
+  renderStats(b);
+  fit();
+}
+
+/* ---------- camera / interaction ---------- */
+function fit() {
+  const w = stage.clientWidth, h = stage.clientHeight;
+  renderer.setSize(w, h, false);
+  camera.aspect = w / h;
+  const H = current ? current.b.H : 160;
+  const needH = 196, needW = 110;
+  const t = Math.tan(camera.fov * Math.PI / 360);
+  const dist = Math.max(needH / (2 * t), needW / (2 * t * camera.aspect));
+  const ty = 92;
+  camera.position.set(0, ty + Math.sin(pitch) * dist, Math.cos(pitch) * dist);
+  camera.lookAt(0, ty, 0);
+  camera.updateProjectionMatrix();
+}
+const tagBox = $("tags");
+function placeTags() {
+  tagBox.innerHTML = "";
+  const w = stage.clientWidth, h = stage.clientHeight;
+  tapes.forEach((tp) => {
+    let best = null;
+    for (let i = 0; i < tp.pts.length; i += 4) {
+      const v = tp.pts[i].clone().applyMatrix4(figure.matrixWorld).project(camera);
+      if (!best || v.x > best.x) best = v;
+    }
+    const d = document.createElement("div");
+    d.className = "tag";
+    d.style.left = ((best.x + 1) / 2 * w) + "px"; d.style.top = ((1 - best.y) / 2 * h) + "px";
+    d.textContent = `${tp.label} ${tp.val.toFixed(1)}`;
+    tagBox.appendChild(d);
+  });
+}
+let dirty = true;
+function loop() {
+  requestAnimationFrame(loop);
+  const dy = yawTarget - yaw;
+  if (Math.abs(dy) > 1e-4) { yaw += dy * 0.18; dirty = true; }
+  if (!dirty) return;
+  dirty = false;
+  figure.rotation.y = yaw;
+  figure.updateMatrixWorld();
+  renderer.render(scene, camera);
+  placeTags();
+}
+let drag = null;
+canvas.addEventListener("pointerdown", (e) => { drag = { x: e.clientX, y: e.clientY, yaw: yawTarget, pitch }; canvas.setPointerCapture(e.pointerId); canvas.style.cursor = "grabbing"; });
+canvas.addEventListener("pointermove", (e) => {
+  if (!drag) return;
+  yawTarget = drag.yaw + (e.clientX - drag.x) * 0.01;
+  pitch = clamp(drag.pitch + (e.clientY - drag.y) * 0.004, -0.15, 0.6);
+  fit(); dirty = true;
+});
+["pointerup", "pointercancel"].forEach((ev) => canvas.addEventListener(ev, () => { drag = null; canvas.style.cursor = "grab"; }));
+document.querySelectorAll(".views button").forEach((bt) => bt.addEventListener("click", () => {
+  const t = +bt.dataset.yaw; const k = Math.round((yawTarget - t) / TAU); yawTarget = t + k * TAU; dirty = true;
+}));
+document.querySelectorAll(".tones button").forEach((bt) => bt.addEventListener("click", () => { skinHex = bt.dataset.c; rebuild(); dirty = true; }));
+let pending = 0;
+["h", "w", "bf"].forEach((id) => $(id).addEventListener("input", () => { if (!pending) pending = requestAnimationFrame(() => { pending = 0; rebuild(); dirty = true; }); }));
+window.addEventListener("resize", () => { fit(); dirty = true; });
+
+function renderStats(b) {
+  const rows = [["BMI", b.bmi.toFixed(1)], ["體脂重", b.F.toFixed(1) + " kg"], ["去脂體重", b.L.toFixed(1) + " kg"],
+    ["胸圍", b.g.bust.toFixed(1)], ["腰圍", b.g.waist.toFixed(1)], ["臀圍", b.g.hip.toFixed(1)],
+    ["大腿圍", b.g.thigh.toFixed(1)], ["上臂圍", b.g.upperArm.toFixed(1)], ["腰臀比", (b.g.waist / b.g.hip).toFixed(2)]];
+  $("stats").innerHTML = rows.map(([k, v]) => `<div><dt>${k}</dt><dd>${v}</dd></div>`).join("");
+}
+rebuild();
+loop();
+window.__set = (H, W, BF, y) => { $("h").value = H; $("w").value = W; $("bf").value = BF; if (y !== undefined) { yaw = yawTarget = y; } rebuild(); dirty = true; };
+})();
+</script>
+</body>
+</html>
